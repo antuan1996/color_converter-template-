@@ -41,7 +41,7 @@ struct Context
 	uint8_t v;
     // some additionall fields y u v
 };
-struct Convert_meta
+struct ConvertMeta
 {
 
     int width, height;
@@ -164,7 +164,7 @@ template< bool isInverse> inline void multiple(Context &ctx, const int16_t* koef
                 }
 }
 
-template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standart st> void convert(const Convert_meta& meta)
+template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standart st> void convert(const ConvertMeta& meta)
 {
 	Context ctx;
 	const int16_t* koeff_matrix;

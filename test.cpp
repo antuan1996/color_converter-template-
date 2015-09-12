@@ -2,7 +2,7 @@
 int main(){
     freopen("report.txt","w",stdout);
     system("pwd");
-    Convert_meta test;
+    ConvertMeta test;
     test.width = 176;
     test.height = 144;
     int frame_size = test.width * test.height;

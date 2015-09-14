@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 2.8.4)
+
+project(colorspace_converter)
+file (GLOB HEADERS "*.hpp")
+file (GLOB SOURCES "*.cpp")
+
+
+if (MSVC)
+  if (MSVC_VERSION LESS 1800)
+    # C99 not supported at all
+    set_source_files_properties(${SOURCES} PROPERTIES LANGUAGE CXX)
+  endif ()
+  set_source_files_properties(${SOURCES} PROPERTIES COMPILE_FLAGS /arch:SSE2)
+  set (MSVC_DEBUG   "/Od /Ob0 /MTd /Zi")
+  set (MSVC_RELEASE "/O2 /MT /D NDEBUG")
+  set (CMAKE_C_FLAGS_DEBUG   "${MSVC_DEBUG}")
+  set (CMAKE_CXX_FLAGS_DEBUG "${MSVC_DEBUG}")
+  set (CMAKE_C_FLAGS_RELEASE   "${MSVC_RELEASE}")
+  set (CMAKE_CXX_FLAGS_RELEASE "${MSVC_RELEASE}")
+else (MSVC)
+  if (APPLE)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99")
+  else ()
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
+  endif ()
+  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -msse2")
+  set (CMAKE_C_FLAGS_DEBUG "-g -O0")
+  set (CMAKE_C_FLAGS_RELEASE "-O2")
+endif (MSVC)
+
+add_executable(colorspace_converter ${SOURCES} ${HEADERS})

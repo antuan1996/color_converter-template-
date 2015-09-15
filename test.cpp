@@ -5,14 +5,20 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <memory>
 
 using namespace ColorspaceConverter;
 
+std::ostringstream fakestream;
+#ifdef ENABLE_LOG
+    #define DEBUG std::cout
+#else
+    #define DEBUG fakestream
+#endif
 static int fifo_test(int argc, char *argv[])
 {
 #ifdef ENABLE_LOG
-	system("pwd"); // non-portable
     freopen("report.txt","w",stdout);
 #endif
 	
@@ -27,7 +33,7 @@ static int fifo_test(int argc, char *argv[])
 	
     size_t frame_size = stride * info.height;
 	
-    std::cout << "Getting memory" << std::endl;
+    DEBUG << "Getting memory" << std::endl;
 	std::shared_ptr <uint8_t> input_buffer  = std::shared_ptr<uint8_t> (new uint8_t[frame_size * 3], std::default_delete<uint8_t> ());
 	std::shared_ptr <uint8_t> output_buffer = std::shared_ptr<uint8_t> (new uint8_t[frame_size * 3], std::default_delete<uint8_t> ());
 	
@@ -38,8 +44,8 @@ static int fifo_test(int argc, char *argv[])
 
 	// Interleaved RGB24
     info.dst_data[0] = output_buffer.get();
-    info.dst_data[1] = NULL;
-    info.dst_data[2] = NULL;
+    info.dst_data[1] = nullptr;
+    info.dst_data[2] = nullptr;
 	
     std::cout << "Reading data" << std::endl;
 	
@@ -105,21 +111,21 @@ static int syntetic_test()
 	static uint8_t test_YUV444[(8 * 2) * 3] =
 	{
 		// Y
-		235, 210, 169, 144, 106,  81,  40,  16,
+		172, 144, 41, 16, 235,  81,  40,  16,
 		235, 210, 169, 144, 106,  81,  40,  16,
 
 		// Cb
-		127,  16, 165,  53, 202,  90, 239, 128,
+		227,  54, 240,  128, 128,  90, 239, 128,
 		127,  16, 165,  53, 202,  90, 239, 128,
 
 		// Cr
-		127, 146,  16,  34, 221, 239, 109, 128,
+		26, 34,  110,  128, 128, 239, 109, 128,
 		127, 146,  16,  34, 221, 239, 109, 128,
 	};
 	
 	static uint8_t test_rgb[(8 * 2) * 3] =
 	{
-		255,255,255,   255,255,0,   0,255,255, 0,255,0,   255,0,255, 255,0,0,   0,0,255, 0,0,0,
+		235,16,16,  16, 235, 16,   16, 16, 235,  0,255,0,   255,0,255, 255,0,0,   0,0,255, 0,0,0,
 		255,255,255,   255,255,0,   0,255,255, 0,255,0,   255,0,255, 255,0,0,   0,0,255, 0,0,0
 	};
 	
@@ -129,7 +135,7 @@ static int syntetic_test()
 	info.width = 8;
 	info.height = 2;
 	size_t stride = 8;
-	
+    
 	for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride;
 		info.dst_stride[plane] = stride * 3;
@@ -141,21 +147,20 @@ static int syntetic_test()
 	info.dst_data[1] = NULL;
 	info.dst_data[2] = NULL;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
+	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_709> (info);
 	print_rgb(result);
-	
 	for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride * 3;
 		info.dst_stride[plane] = stride;
 	}
 	info.src_data[0] = test_rgb;
-	info.src_data[1] = NULL;
-	info.src_data[2] = NULL;
+	info.src_data[1] = nullptr;
+	info.src_data[2] = nullptr;
 	info.dst_data[0] = result;
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 8 * 2;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_601> (info);
+	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_709> (info);
 	print_yuv(result);
 	
 	return 0;
@@ -166,6 +171,15 @@ static void print_usage()
 	std::cout << "Usage:" << std::endl;
 	std::cout << "    colorspace_converter " << std::endl;
 	std::cout << "    colorspace_converter yuv_file rgb_file width height" << std::endl << std::endl;
+}
+
+int check( uint8_t* a, uint8_t* b, int width, int height ) {
+    int res = 0;
+    for( size_t y = 0; y < uint(height); ++y )
+        for( size_t x = 0 ; x < uint(width) ; ++x ) {
+            res += abs( a[y * width + x] - b[y * width + x] );
+        }
+    return res;
 }
 
 int main(int argc, char *argv[])

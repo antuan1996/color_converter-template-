@@ -62,6 +62,13 @@ static const int16_t k_bt601_RGB_to_YUV[3 * 3] =
 	131, -110, -21,
 };
 
+static const int16_t k_bt709_RGB_to_YUV[3 * 3] =
+{
+	54, 183, 18,
+	-30, -101, 131,
+	131, -119, -12
+};
+
 static const int16_t k_bt601_YUV_to_RGB[3 * 3] =
 {
 	256,   0,  351,
@@ -69,8 +76,15 @@ static const int16_t k_bt601_YUV_to_RGB[3 * 3] =
 	256, 444,    0
 };
 
+static const int16_t k_bt709_YUV_to_RGB[3 * 3] =
+{
+	256, 0 , 394,
+	256, -47, -117,
+	256, 465,    0
+};
+
 static const size_t k_rgb_steps[3] = { 3, 3, 3 };
-static const size_t k_yuv420_steps[3] = { 2, 1, 1 };
+static const size_t k_yuv420_steps[3] = { 2, 1, 1 }; // ?
 static const size_t k_yuv422_steps[3] = { 2, 1, 1 };
 static const size_t k_yuv444_steps[3] = { 1, 1, 1 };
 
@@ -82,6 +96,8 @@ template<Pack pack, Colorspace cs> const size_t* get_pel_step ()
 	if (cs == YUV444) {
 		return k_yuv444_steps;
 	}
+    // TODO: Usupported transform
+    assert(0);
 }
 
 template <Colorspace from, Colorspace to, Standard Standard> const int16_t* get_transfrom_coeffs()
@@ -99,6 +115,16 @@ template <Colorspace from, Colorspace to, Standard Standard> const int16_t* get_
 		// TODO: Usupported transform
 		assert(0);
 	}
+    if (Standard == BT_709) {
+		if (from == RGB && to == YUV444) {
+			return k_bt709_RGB_to_YUV;
+		}
+		if (from == YUV444 && to == RGB) {
+			return k_bt709_YUV_to_RGB;
+		}
+		// TODO: Usupported transform
+		assert(0);
+	}
 	// TODO: Usupported standard
 	assert(0);
 	return nullptr;
@@ -106,7 +132,7 @@ template <Colorspace from, Colorspace to, Standard Standard> const int16_t* get_
 
 template <Pack pack, Colorspace cs> inline void load_and_unpack (Context &ctx, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3])
 {
-	const bool interleaved = (cs == RGB);
+	const bool interleaved = (pack == Interleaved);
 	if (interleaved) {
 		ctx.a1 = src_a[0 + 0*3];
 		ctx.b1 = src_a[1 + 0*3];
@@ -132,10 +158,12 @@ template <Pack pack, Colorspace cs> inline void load_and_unpack (Context &ctx, c
 		ctx.b2 = src_b[1];
 		ctx.c2 = src_c[1];
 		
+        
 		ctx.a3 = src_a[0 + stride[0]];
 		ctx.b3 = src_b[0 + stride[1]];
 		ctx.c3 = src_c[0 + stride[2]];
 		
+        
 		ctx.a4 = src_a[1 + stride[0]];
 		ctx.b4 = src_b[1 + stride[1]];
 		ctx.c4 = src_c[1 + stride[2]];
@@ -144,7 +172,7 @@ template <Pack pack, Colorspace cs> inline void load_and_unpack (Context &ctx, c
 
 template <Pack pack, Colorspace cs> inline void pack_and_store (const Context &ctx, uint8_t *dst_a, uint8_t *dst_b, uint8_t *dst_c, const size_t stride[3])
 {
-	const bool interleaved = (cs == RGB);
+	const bool interleaved = (pack == Interleaved);
 	if (interleaved) {
 		dst_a[0 + 0*3] = ctx.a1;
 		dst_a[1 + 0*3] = ctx.b1;
@@ -180,12 +208,12 @@ template <Pack pack, Colorspace cs> inline void pack_and_store (const Context &c
 	}
 }
 	
-template <class T> T clip(T val, T min, T max)
+template <class T> inline T clip(T val, T min, T max)
 {
 	return std::max(std::min(val, max), min);
 }
 	
-template <class T> T round_shift(T val, const size_t n)
+template <class T> inline T round_shift(T val, const size_t n)
 {
 	return (val + (1 << (n - 1))) >> n;
 }
@@ -199,11 +227,12 @@ template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t
 	}
 }
 	
-static inline void clip_result (int32_t &y, int32_t &u, int32_t &v, int32_t min, int32_t max)
+static inline void clip_result (int32_t &a1, int32_t &a2, int32_t &a3, int32_t &a4, int min, int max)
 {
-	y = clip(y, min, max);
-	u = clip(u, min, max);
-	v = clip(v, min, max);
+    a1 = clip(a1, min, max);
+    a2 = clip(a2, min, max);
+    a3 = clip(a3, min, max);
+    a4 = clip(a4, min, max);  
 }
 
 /* 
@@ -223,10 +252,11 @@ static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int16_t tra
 
 template <Colorspace from, Colorspace to> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
 {
-	offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, -16, -128, -128);
-	offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, -16, -128, -128);
-	offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, -16, -128, -128);
-	offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, -16, -128, -128);
+	//offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+    offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128, -128);
+	offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128, -128);
+	offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128, -128);
+	offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, 0, -128, -128);
 
 	mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
 	mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
@@ -240,20 +270,27 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 	std::cout << "******" << std::endl;
 #endif
 	
-	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128);
-	offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 16, 128, 128);
-	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 16, 128, 128);
-	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 16, 128, 128);
+	//offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128, 128);
+    offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128, 128);
+	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128, 128);
+	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128, 128);
 	
-	clip_result (ctx.a1, ctx.b1, ctx.c1, 0, 255);
-	clip_result (ctx.a2, ctx.b2, ctx.c2, 0, 255);
-	clip_result (ctx.a3, ctx.b3, ctx.c3, 0, 255);
-	clip_result (ctx.a4, ctx.b4, ctx.c4, 0, 255);
+    if(to == RGB){
+        clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16, 235); //R
+        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 235); //G
+        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //B
+    } else
+            if( to == YUV444 ){
+                clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16, 235); //Y
+                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //U
+                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //V
+            }
 }
 	
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
 {
-	bool interleaved = (cs == RGB);
+	bool interleaved = (pack == Interleaved);
 	if (interleaved) {
 		ptr_a += stride[0] * 2;
 	} else {
@@ -278,8 +315,8 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
 	const size_t *src_steps = get_pel_step<from_pack, from_cs> ();
 	const size_t *dst_steps = get_pel_step<to_pack, to_cs> ();
 	
-	for(int y = 0; y < meta.height; y += 2) {
-		for(int x = 0; x < meta.width; x += 2) {
+	for(size_t y = 0; y < meta.height; y += 2) {
+		for(size_t x = 0; x < meta.width; x += 2) {
 			// Process 2x2 pixels
 			Context context;
 			load_and_unpack <from_pack, from_cs> (context,

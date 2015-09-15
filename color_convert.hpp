@@ -215,7 +215,9 @@ template <class T> inline T clip(T val, T min, T max)
 	
 template <class T> inline T round_shift(T val, const size_t n)
 {
-	return (val + (1 << (n - 1))) >> n;
+    // TO DO: fix issue with negative numbers
+	//return (val + (1 << (n - 1))) >> n;
+    return val  >> n; 
 }
 	
 template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t &v, int32_t offset_y, int32_t offset_u, int32_t offset_v)

@@ -111,15 +111,15 @@ static int syntetic_test()
 	static uint8_t test_YUV444[(8 * 2) * 3] =
 	{
 		// Y
-		172, 144, 41, 16, 235,  81,  40,  16,
+		81, 172, 31, 16, 235,  81,  40,  16,
 		235, 210, 169, 144, 106,  81,  40,  16,
 
 		// Cb
-		227,  54, 240,  128, 128,  90, 239, 128,
+		90,  41, 240,  128, 128,  90, 239, 128,
 		127,  16, 165,  53, 202,  90, 239, 128,
 
 		// Cr
-		26, 34,  110,  128, 128, 239, 109, 128,
+		240, 26,  117,  128, 128, 239, 109, 128,
 		127, 146,  16,  34, 221, 239, 109, 128,
 	};
 	
@@ -147,7 +147,7 @@ static int syntetic_test()
 	info.dst_data[1] = NULL;
 	info.dst_data[2] = NULL;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_709> (info);
+	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
 	print_rgb(result);
 	for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride * 3;
@@ -160,7 +160,7 @@ static int syntetic_test()
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 8 * 2;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_709> (info);
+	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_601> (info);
 	print_yuv(result);
 	
 	return 0;

@@ -215,9 +215,8 @@ template <class T> inline T clip(T val, T min, T max)
 	
 template <class T> inline T round_shift(T val, const size_t n)
 {
-    // TO DO: fix issue with negative numbers
-	//return (val + (1 << (n - 1))) >> n;
-    return val  >> n; 
+    return (val + (1 << (n - 1))) >> n;
+    //return val  >> n; 
 }
 	
 template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t &v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
@@ -229,7 +228,7 @@ template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t
 	}
 }
 	
-static inline void clip_result (int32_t &a1, int32_t &a2, int32_t &a3, int32_t &a4, int min, int max)
+static inline void clip_result (int32_t &a1, int32_t &a2, int32_t &a3, int32_t &a4, int32_t min, int32_t max)
 {
     a1 = clip(a1, min, max);
     a2 = clip(a2, min, max);
@@ -247,9 +246,10 @@ static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int16_t tra
 	int32_t tmp1 = transform_matrix[0*3 + 0] * a + transform_matrix[0*3 + 1] * b + transform_matrix[0*3 + 2] * c;
 	int32_t tmp2 = transform_matrix[1*3 + 0] * a + transform_matrix[1*3 + 1] * b + transform_matrix[1*3 + 2] * c;
 	int32_t tmp3 = transform_matrix[2*3 + 0] * a + transform_matrix[2*3 + 1] * b + transform_matrix[2*3 + 2] * c;
-	a = round_shift(tmp1, 8);
-	b = round_shift(tmp2, 8);
-	c = round_shift(tmp3, 8);
+	
+    a = tmp1;
+	b = tmp2;
+	c = tmp3;
 }
 
 template <Colorspace from, Colorspace to> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
@@ -273,21 +273,38 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 #endif
 	
 	//offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
-	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128, 128);
-    offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128, 128);
-	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128, 128);
-	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128, 128);
+	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << 8, 128 << 8);
+    offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << 8, 128 << 8);
+	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 8, 128 << 8);
+	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 8, 128 << 8);
 	
     if(to == RGB){
-        clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16, 235); //R
-        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 235); //G
-        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //B
+        clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16 << 8, 235 << 8); //R
+        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 235 << 8); //G
+        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 235 << 8); //B
     } else
             if( to == YUV444 ){
-                clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16, 235); //Y
-                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //U
-                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16, 240); //V
+                clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16 << 8, 235 << 8); //Y
+                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 240 << 8); //U
+                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 240 << 8); //V
             }
+    
+    ctx.a1 = round_shift(ctx.a1, 8);
+	ctx.b1 = round_shift(ctx.b1, 8);
+	ctx.c1 = round_shift(ctx.c1, 8);
+    
+    ctx.a2 = round_shift(ctx.a2, 8);
+	ctx.b2 = round_shift(ctx.b2, 8);
+	ctx.c2 = round_shift(ctx.c2, 8);
+    
+    ctx.a3 = round_shift(ctx.a3, 8);
+	ctx.b3 = round_shift(ctx.b3, 8);
+	ctx.c3 = round_shift(ctx.c3, 8);
+    
+    ctx.a4 = round_shift(ctx.a4, 8);
+	ctx.b4 = round_shift(ctx.b4, 8);
+	ctx.c4 = round_shift(ctx.c4, 8);
+    
 }
 	
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])

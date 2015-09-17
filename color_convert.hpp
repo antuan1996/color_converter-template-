@@ -53,6 +53,12 @@ struct ConvertMeta
 	size_t height;
 	size_t src_stride[3];
 	size_t dst_stride[3];
+    uint8_t  buf1[2];
+    uint8_t  buf2[2];
+    uint8_t  buf3[2];
+    uint8_t  buf4[2];
+    uint8_t  buf5[2];
+    uint8_t  buf6[2];
 };
 
 static const int16_t k_bt601_RGB_to_YUV[3 * 3] =
@@ -69,6 +75,12 @@ static const int16_t k_bt709_RGB_to_YUV[3 * 3] =
 	131, -119, -12
 };
 
+static const int16_t k_bt2020_RGB_to_YUV[3 * 3] =
+{
+    67, 174, 15,
+    -37, -94, 131,
+    131, -120, -10
+};
 static const int16_t k_bt601_YUV_to_RGB[3 * 3] =
 {
 	256,   0,  351,
@@ -82,6 +94,13 @@ static const int16_t k_bt709_YUV_to_RGB[3 * 3] =
 	256, -47, -117,
 	256, 465,    0
 };
+static const int16_t k_bt2020_YUV_to_RGB[3 * 3] =
+{
+    256, 0, 369,
+    256, -41, -143,
+    257, 471, 0
+};
+
 
 static const size_t k_rgb_steps[3] = { 3, 3, 3 };
 static const size_t k_yuv420_steps[3] = { 2, 1, 1 }; // ?
@@ -129,44 +148,64 @@ template <Colorspace from, Colorspace to, Standard Standard> const int16_t* get_
 	assert(0);
 	return nullptr;
 }
-
-template <Pack pack, Colorspace cs> inline void load_and_unpack (Context &ctx, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3])
+template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){
+    if(pack == Interleaved ){
+        memcpy(meta.buf1, src_a + 0, 2);
+        memcpy(meta.buf2, src_a + 2, 2);
+        memcpy(meta.buf3, src_a + 4, 2);
+        
+        memcpy(meta.buf3, src_a + stride[0] + 0, 2);
+        memcpy(meta.buf3, src_a + stride[0] + 2 ,2);
+        memcpy(meta.buf3, src_a + stride[0] + 4, 2);
+    }
+    else
+        if(pack == Planar){
+            memcpy(meta.buf1, src_a, 2);
+            memcpy(meta.buf2, src_a + stride[0], 2);
+            
+            memcpy(meta.buf3, src_b, 2);
+            memcpy(meta.buf4, src_b + stride[1], 2);
+            
+            memcpy(meta.buf5, src_c, 2);
+            memcpy(meta.buf6, src_c + stride[2], 2);
+        }
+}
+template <Pack pack> inline void unpack (ConvertMeta& meta, Context &ctx)
 {
-	const bool interleaved = (pack == Interleaved);
-	if (interleaved) {
-		ctx.a1 = src_a[0 + 0*3];
-		ctx.b1 = src_a[1 + 0*3];
-		ctx.c1 = src_a[2 + 0*3];
+	if (pack == Interleaved) {
+		ctx.a1 = meta.buf1[0];
+		ctx.b1 = meta.buf1[1];
+		ctx.c1 = meta.buf2[0];
 		
-		ctx.a2 = src_a[0 + 1*3];
-		ctx.b2 = src_a[1 + 1*3];
-		ctx.c2 = src_a[2 + 1*3];
+		ctx.a2 = meta.buf2[1];
+		ctx.b2 = meta.buf3[0];
+		ctx.c2 = meta.buf3[1];
 		
-		ctx.a3 = src_a[0 + 0*3 + stride[0]];
-		ctx.b3 = src_a[1 + 0*3 + stride[0]];
-		ctx.c3 = src_a[2 + 0*3 + stride[0]];
+		ctx.a3 = meta.buf4[0];
+		ctx.b3 = meta.buf4[1];
+		ctx.c3 = meta.buf5[0];
 		
-		ctx.a4 = src_a[0 + 1*3 + stride[0]];
-		ctx.b4 = src_a[1 + 1*3 + stride[0]];
-		ctx.c4 = src_a[2 + 1*3 + stride[0]];
+		ctx.a4 = meta.buf5[1];
+		ctx.b4 = meta.buf6[0];
+		ctx.c4 = meta.buf6[1];;
 	} else  { // planar
-		ctx.a1 = src_a[0];
-		ctx.b1 = src_b[0];
-		ctx.c1 = src_c[0];
+		ctx.a1 = meta.buf1[0];
+		ctx.b1 = meta.buf3[0];
+		ctx.c1 = meta.buf5[0];
 		
-		ctx.a2 = src_a[1];
-		ctx.b2 = src_b[1];
-		ctx.c2 = src_c[1];
-		
-        
-		ctx.a3 = src_a[0 + stride[0]];
-		ctx.b3 = src_b[0 + stride[1]];
-		ctx.c3 = src_c[0 + stride[2]];
+		ctx.a2 = meta.buf1[1];
+		ctx.b2 = meta.buf3[1];
+		ctx.c2 = meta.buf5[1];
 		
         
-		ctx.a4 = src_a[1 + stride[0]];
-		ctx.b4 = src_b[1 + stride[1]];
-		ctx.c4 = src_c[1 + stride[2]];
+		ctx.a3 = meta.buf2[0];
+		ctx.b3 = meta.buf4[0];
+		ctx.c3 = meta.buf6[0];
+		
+        
+		ctx.a4 = meta.buf2[1];
+		ctx.b4 = meta.buf4[1];
+		ctx.c4 = meta.buf6[1];
 	}
 }
 
@@ -208,15 +247,14 @@ template <Pack pack, Colorspace cs> inline void pack_and_store (const Context &c
 	}
 }
 	
-template <class T> inline T clip(T val, T min, T max)
+template <class T > inline T clip(T val_a, T min, T max)
 {
-	return std::max(std::min(val, max), min);
+    return std::max(std::min(val_a, max), min);
 }
-	
 template <class T> inline T round_shift(T val, const size_t n)
 {
-    return (val + (1 << (n - 1))) >> n;
-    //return val  >> n; 
+    //return (val + (1 << (n - 1))) >> n;
+    return val  >> n; 
 }
 	
 template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t &v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
@@ -228,12 +266,19 @@ template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t
 	}
 }
 	
-static inline void clip_result (int32_t &a1, int32_t &a2, int32_t &a3, int32_t &a4, int32_t min, int32_t max)
+template <Colorspace cs> static inline void clip_result (int32_t &val_a, int32_t &val_b, int32_t &val_c)
 {
-    a1 = clip(a1, min, max);
-    a2 = clip(a2, min, max);
-    a3 = clip(a3, min, max);
-    a4 = clip(a4, min, max);  
+    if(cs == RGB){
+        val_a = clip(val_a, 235, 16);
+        val_b = clip(val_b, 235, 16);
+        val_c = clip(val_c, 235, 16);
+    }
+    else
+    if(cs == YUV444){
+        val_a = clip(val_a, 235, 16);
+        val_b = clip(val_b, 240, 16);
+        val_c = clip(val_c, 240, 16);
+    }
 }
 
 /* 
@@ -251,7 +296,11 @@ static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int16_t tra
 	b = tmp2;
 	c = tmp3;
 }
-
+inline void complex_shift( int32_t& a, int32_t b, int32_t c, int n){
+    a = round_shift(a, n);
+	b = round_shift(b, n);
+	c = round_shift(c, n);
+}
 template <Colorspace from, Colorspace to> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
 {
 	//offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
@@ -278,33 +327,17 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 8, 128 << 8);
 	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 8, 128 << 8);
 	
-    if(to == RGB){
-        clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16 << 8, 235 << 8); //R
-        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 235 << 8); //G
-        clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 235 << 8); //B
-    } else
-            if( to == YUV444 ){
-                clip_result (ctx.a1, ctx.a2, ctx.a3, ctx.a4, 16 << 8, 235 << 8); //Y
-                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 240 << 8); //U
-                clip_result (ctx.b1, ctx.b2, ctx.b3, ctx.b4, 16 << 8, 240 << 8); //V
-            }
     
-    ctx.a1 = round_shift(ctx.a1, 8);
-	ctx.b1 = round_shift(ctx.b1, 8);
-	ctx.c1 = round_shift(ctx.c1, 8);
+    clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
+    clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
+    clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
+    clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
     
-    ctx.a2 = round_shift(ctx.a2, 8);
-	ctx.b2 = round_shift(ctx.b2, 8);
-	ctx.c2 = round_shift(ctx.c2, 8);
-    
-    ctx.a3 = round_shift(ctx.a3, 8);
-	ctx.b3 = round_shift(ctx.b3, 8);
-	ctx.c3 = round_shift(ctx.c3, 8);
-    
-    ctx.a4 = round_shift(ctx.a4, 8);
-	ctx.b4 = round_shift(ctx.b4, 8);
-	ctx.c4 = round_shift(ctx.c4, 8);
-    
+    complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
+    complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
+    complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
+    complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
+ 
 }
 	
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
@@ -338,11 +371,12 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
 		for(size_t x = 0; x < meta.width; x += 2) {
 			// Process 2x2 pixels
 			Context context;
-			load_and_unpack <from_pack, from_cs> (context,
-												  src_a + src_steps[0] * x,
-												  src_b + src_steps[1] * x,
-												  src_c + src_steps[2] * x,
-												  meta.src_stride);
+			load <from_pack> (meta,
+                              src_a + src_steps[0] * x,
+                              src_b + src_steps[1] * x,
+                              src_c + src_steps[2] * x,
+                              meta.src_stride );
+            unpack <from_pack>(meta, context);
 			
 			if (from_cs != to_cs) {
 				transform <from_cs, to_cs> (context, transform_matrix);

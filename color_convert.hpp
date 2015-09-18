@@ -76,7 +76,7 @@ static const int16_t k_bt709_RGB_to_YUV[3 * 3] =
 };
 
 static const int16_t k_bt2020_RGB_to_YUV[3 * 3] =
-{
+{   
     67, 174, 15,
     -37, -94, 131,
     131, -120, -10
@@ -116,36 +116,53 @@ template<Pack pack, Colorspace cs> const size_t* get_pel_step ()
 		return k_yuv444_steps;
 	}
     // TODO: Usupported transform
-    assert(0);
+    //assert(0);
 }
 
-template <Colorspace from, Colorspace to, Standard Standard> const int16_t* get_transfrom_coeffs()
+template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transfrom_coeffs()
 {
+    std::cout <<"st is " << st << srd::endl; 
 	if (from == to) {
 		return nullptr;
 	}
-	if (Standard == BT_601) {
-		if (from == RGB && to == YUV444) {
+	if (st == BT_601) {
+        if (from == RGB && to == YUV444) {
 			return k_bt601_RGB_to_YUV;
 		}
+        else
 		if (from == YUV444 && to == RGB) {
 			return k_bt601_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
-		assert(0);
+		//else
+        //assert(0);
 	}
-    if (Standard == BT_709) {
+    else
+    if (st == BT_709) {
 		if (from == RGB && to == YUV444) {
 			return k_bt709_RGB_to_YUV;
 		}
+        else
 		if (from == YUV444 && to == RGB) {
 			return k_bt709_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
-		assert(0);
+		//else
+        //assert(0);
+	}
+    else
+    if (st == BT_2020) {
+        if (from == RGB && to == YUV444) {
+			return k_bt2020_RGB_to_YUV;
+		}
+		if (from == YUV444 && to == RGB) {
+			return k_bt2020_YUV_to_RGB;
+		}
+		// TODO: Usupported transform
+		//assert(0);
 	}
 	// TODO: Usupported standard
-	assert(0);
+	//assert(0);
 	return nullptr;
 }
 template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){

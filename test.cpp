@@ -110,6 +110,13 @@ static void print_yuv(const uint8_t *yuv)
 
 static int syntetic_test()
 {
+     static uint8_t test_YUV422_bt601[(8 * 2) * 2] =
+	{
+		// Y
+		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
+        16,128,     16,128,    210,16,  210,46,   170,166,  170,16,  106,202, 106,222
+	};
+    
     static uint8_t test_YUV444_bt601[(8 * 2) * 3] =
 	{
 		// Y
@@ -171,14 +178,14 @@ static int syntetic_test()
 		info.dst_stride[plane] = stride * 3;
 	}
     
-	info.src_data[0] = test_YUV444_bt2020;
-	info.src_data[1] = test_YUV444_bt2020 + 8 * 2;
-	info.src_data[2] = test_YUV444_bt2020 + 8 * 2 + 8 * 2;
+	info.src_data[0] = test_YUV422_bt601;
+	info.src_data[1] = test_YUV422_bt601 + 8 * 2;
+	info.src_data[2] = test_YUV422_bt601 + 8 * 2 + 8 * 2;
 	info.dst_data[0] = result;
 	info.dst_data[1] = NULL;
 	info.dst_data[2] = NULL;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_2020> (info);
+	colorspace_convert<YUV422, Interleaved, RGB, Interleaved, BT_601> (info);
 	print_rgb(result);
     for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride * 3;
@@ -191,7 +198,7 @@ static int syntetic_test()
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 8 * 2;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_2020> (info);
+	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_601> (info);
 	print_yuv(result);
 	
 	return 0;

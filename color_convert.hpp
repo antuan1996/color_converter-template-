@@ -16,6 +16,7 @@ namespace ColorspaceConverter {
 enum Colorspace
 {
 	YUV444,
+    YUV422,
 	RGB
 };
 
@@ -103,18 +104,40 @@ static const int16_t k_bt2020_YUV_to_RGB[3 * 3] =
 
 
 static const size_t k_rgb_steps[3] = { 3, 3, 3 };
-static const size_t k_yuv420_steps[3] = { 2, 1, 1 }; // ?
-static const size_t k_yuv422_steps[3] = { 2, 1, 1 };
-static const size_t k_yuv444_steps[3] = { 1, 1, 1 };
 
-template<Pack pack, Colorspace cs> const size_t* get_pel_step ()
+static const size_t k_yuv420_steps[3] = { 2, 1, 1 }; // ?
+
+static const size_t k_yuv422_planar_steps[3] = { 1, 1, 1 };
+static const size_t k_yuv422_interleaved_steps[3] = { 2, 1, 1 };
+
+static const size_t k_yuv444_planar_steps[3] = { 1, 1, 1 };
+static const size_t k_yuv444_interleaved_steps[3] = { 3, 3, 3 };
+
+template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& posc, int cur_pos)
 {
 	if (cs == RGB) {
-		return k_rgb_steps;
+        posa = cur_pos * 3;
 	}
 	if (cs == YUV444) {
-		return k_yuv444_steps;
+        if(pack == Planar){
+            posa = cur_pos;
+            posb = cur_pos;
+            posc = cur_pos;
+        }
+        if(pack == Interleaved){
+            posa =cur_pos * 3;
+        }
 	}
+    if (cs == YUV422) {
+        if(pack == Planar){
+            posa = cur_pos;
+            posb = cur_pos / 2;
+            posc = cur_pos / 2;
+        }
+        if(pack == Interleaved)
+            posa = cur_pos * 2;
+	}
+    
     // TODO: Usupported transform
     //assert(0);
 }
@@ -130,7 +153,7 @@ template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transf
 			return k_bt601_RGB_to_YUV;
 		}
         else
-		if (from == YUV444 && to == RGB) {
+		if ((from == YUV444 || from == YUV422) && to == RGB) {
 			return k_bt601_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
@@ -159,70 +182,127 @@ template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transf
 			return k_bt2020_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
-		assert(0);
+		//assert(0);
 	}
 	// TODO: Usupported standard
-	assert(0);
+	//assert(0);
 	return nullptr;
 }
-template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){
-    if(pack == Interleaved ){
+template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){
+    if(pack == Interleaved ){ 
+        // 1,2,3
+        // 4,5,6
         memcpy(meta.buf1, src_a + 0, 2);
-        memcpy(meta.buf2, src_a + 2, 2);
-        memcpy(meta.buf3, src_a + 4, 2);
-        
         memcpy(meta.buf4, src_a + stride[0] + 0, 2);
-        memcpy(meta.buf5, src_a + stride[0] + 2 ,2);
-        memcpy(meta.buf6, src_a + stride[0] + 4, 2);
+        if(cs == YUV422  || cs == YUV444 || cs == RGB){
+                memcpy(meta.buf2, src_a + 2, 2);
+                memcpy(meta.buf5, src_a + stride[0] + 2 ,2);
+        }
+        if(cs == RGB || cs == YUV444){            
+            memcpy(meta.buf3, src_a + 4, 2);
+            memcpy(meta.buf6, src_a + stride[0] + 4, 2);
+        }
     }
     else
-        if(pack == Planar){
-            memcpy(meta.buf1, src_a, 2);
-            memcpy(meta.buf2, src_a + stride[0], 2);
-            
-            memcpy(meta.buf3, src_b, 2);
-            memcpy(meta.buf4, src_b + stride[1], 2);
-            
-            memcpy(meta.buf5, src_c, 2);
-            memcpy(meta.buf6, src_c + stride[2], 2);
+        if(pack == Planar){ 
+            if(cs == YUV444 || cs == RGB){
+                memcpy(meta.buf1, src_a, 2);
+                memcpy(meta.buf2, src_a + stride[0], 2);
+                memcpy(meta.buf3, src_b, 2);
+                memcpy(meta.buf4, src_b + stride[1], 2);
+                memcpy(meta.buf5, src_c, 2);
+                memcpy(meta.buf6, src_c + stride[2], 2);
+            }
+            if(cs == YUV422){
+                memcpy(meta.buf1, src_a, 2);
+                memcpy(meta.buf2, src_a + stride[0], 2);
+                memcpy(meta.buf3, src_b, 2);
+                memcpy(meta.buf5, src_c, 2);
+            }
         }
 }
-template <Pack pack> inline void unpack (const ConvertMeta& meta, Context &ctx)
+template <Pack pack, Colorspace cs> inline void unpack (const ConvertMeta& meta, Context &ctx)
 {
-	if (pack == Interleaved) {
-		ctx.a1 = meta.buf1[0];
-		ctx.b1 = meta.buf1[1];
-		ctx.c1 = meta.buf2[0];
-		
-		ctx.a2 = meta.buf2[1];
-		ctx.b2 = meta.buf3[0];
-		ctx.c2 = meta.buf3[1];
-		
-		ctx.a3 = meta.buf4[0];
-		ctx.b3 = meta.buf4[1];
-		ctx.c3 = meta.buf5[0];
-		
-		ctx.a4 = meta.buf5[1];
-		ctx.b4 = meta.buf6[0];
-		ctx.c4 = meta.buf6[1];;
+	if (pack == Interleaved){
+        if(cs == RGB || cs == YUV444){
+            ctx.a1 = meta.buf1[0];
+            ctx.b1 = meta.buf1[1];
+            ctx.c1 = meta.buf2[0];
+            
+            ctx.a2 = meta.buf2[1];
+            ctx.b2 = meta.buf3[0];
+            ctx.c2 = meta.buf3[1];
+            
+            ctx.a3 = meta.buf4[0];
+            ctx.b3 = meta.buf4[1];
+            ctx.c3 = meta.buf5[0];
+            
+            ctx.a4 = meta.buf5[1];
+            ctx.b4 = meta.buf6[0];
+            ctx.c4 = meta.buf6[1];
+        }
+        if(cs == YUV422){
+            ctx.a1 = meta.buf1[0];
+            ctx.b1 = meta.buf1[1];
+            
+            ctx.a2 = meta.buf2[0];
+            ctx.c2 = meta.buf2[1];
+            
+            ctx.a3 = meta.buf4[0];
+            ctx.b3 = meta.buf4[1];
+            
+            ctx.a4 = meta.buf5[0];
+            ctx.c4 = meta.buf5[1];
+            
+            ctx.c1 = ctx.c2;
+            ctx.b2 = ctx.b1;
+            
+            ctx.c3 = ctx.c4;
+            ctx.b4 = ctx.b3;
+            
+        }
 	} else  { // planar
-		ctx.a1 = meta.buf1[0];
-		ctx.b1 = meta.buf3[0];
-		ctx.c1 = meta.buf5[0];
-		
-		ctx.a2 = meta.buf1[1];
-		ctx.b2 = meta.buf3[1];
-		ctx.c2 = meta.buf5[1];
-		
+		//p1 = 1_2
+        //p2 = 3_4
+        //p3 = 5_6
+        if(cs == RGB || cs == YUV444){
+            ctx.a1 = meta.buf1[0];
+            ctx.b1 = meta.buf3[0];
+            ctx.c1 = meta.buf5[0];
+            
+            ctx.a2 = meta.buf1[1];
+            ctx.b2 = meta.buf3[1];
+            ctx.c2 = meta.buf5[1];
+            
+            ctx.a3 = meta.buf2[0];
+            ctx.b3 = meta.buf4[0];
+            ctx.c3 = meta.buf6[0];
+            
+            ctx.a4 = meta.buf2[1];
+            ctx.b4 = meta.buf4[1];
+            ctx.c4 = meta.buf6[1];
+        }
+        if(cs == YUV422){
+        // p1 = 1,2
+        // p2 = 3
+        // p3 = 5
+            ctx.a1 = meta.buf1[0];
+            ctx.b1 = meta.buf3[0];
+            ctx.c1 = meta.buf5[0];
+            
+            ctx.a2 = meta.buf1[1];
+            ctx.b2 = ctx.b1;
+            ctx.c2 = ctx.c1;
+            
+            ctx.a3 = meta.buf2[0];
+            ctx.b3 = meta.buf3[1];
+            ctx.c3 = meta.buf5[1];
+            
+            ctx.a4 = meta.buf2[1];
+            ctx.b4 = ctx.b3;
+            ctx.c4 = ctx.c3;
+        }
         
-		ctx.a3 = meta.buf2[0];
-		ctx.b3 = meta.buf4[0];
-		ctx.c3 = meta.buf6[0];
-		
-        
-		ctx.a4 = meta.buf2[1];
-		ctx.b4 = meta.buf4[1];
-		ctx.c4 = meta.buf6[1];
 	}
 }
 
@@ -327,7 +407,7 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 {
 	
     
-#ifndef ENABLE_LOG
+#ifdef ENABLE_LOG
     std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
     std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
     std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
@@ -400,27 +480,27 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
 	uint8_t* dst_b = meta.dst_data[1];
 	uint8_t* dst_c = meta.dst_data[2];
 	
-	const size_t *src_steps = get_pel_step<from_pack, from_cs> ();
-	const size_t *dst_steps = get_pel_step<to_pack, to_cs> ();
-	
 	for(size_t y = 0; y < meta.height; y += 2) {
 		for(size_t x = 0; x < meta.width; x += 2) {
 			// Process 2x2 pixels
 			Context context;
-			load <from_pack> (meta,
-                              src_a + src_steps[0] * x,
-                              src_b + src_steps[1] * x,
-                              src_c + src_steps[2] * x,
-                              meta.src_stride );
-            unpack <from_pack>(meta, context);
+            size_t shift_a, shift_b, shift_c;
+            get_pos <from_pack, from_cs>(shift_a, shift_b, shift_c, x);
+			load <from_pack, from_cs> (meta,
+                              src_a + shift_a,
+                              src_b + shift_b,
+                              src_c + shift_c,
+                              meta.src_stride);
+            unpack <from_pack, from_cs>(meta, context);
 			if (from_cs != to_cs) {
 				transform <from_cs, to_cs> (context, transform_matrix);
 			}
-			
+            
+			get_pos <to_pack, to_cs>(shift_a, shift_b, shift_c, x);
 			pack_and_store <to_pack, to_cs> (context,
-											 dst_a + dst_steps[0] * x,
-											 dst_b + dst_steps[1] * x,
-											 dst_c + dst_steps[2] * x,
+											 dst_a + shift_a,
+											 dst_b + shift_b,
+											 dst_c + shift_c,
 											 meta.dst_stride);
 		}
 		next_row <from_cs, from_pack> (src_a, src_b, src_c, meta.src_stride);

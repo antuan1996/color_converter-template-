@@ -121,7 +121,7 @@ template<Pack pack, Colorspace cs> const size_t* get_pel_step ()
 
 template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transfrom_coeffs()
 {
-    std::cout <<"st is " << st << srd::endl; 
+    std::cout <<"st is " << st << std::endl; 
 	if (from == to) {
 		return nullptr;
 	}
@@ -286,15 +286,15 @@ template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t
 template <Colorspace cs> static inline void clip_result (int32_t &val_a, int32_t &val_b, int32_t &val_c)
 {
     if(cs == RGB){
-        val_a = clip(val_a, 235, 16);
-        val_b = clip(val_b, 235, 16);
-        val_c = clip(val_c, 235, 16);
+        val_a = clip(val_a, 16, 235);
+        val_b = clip(val_b, 16, 235);
+        val_c = clip(val_c, 16, 235);
     }
     else
     if(cs == YUV444){
-        val_a = clip(val_a, 235, 16);
-        val_b = clip(val_b, 240, 16);
-        val_c = clip(val_c, 240, 16);
+        val_a = clip(val_a, 16, 225);
+        val_b = clip(val_b, 16, 240);
+        val_c = clip(val_c, 16, 240);
     }
 }
 
@@ -344,17 +344,16 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 8, 128 << 8);
 	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 8, 128 << 8);
 	
+    complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
+    complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
+    complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
+    complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
     
     clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
     clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
     clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
     clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
-    
-    complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
-    complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
-    complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
-    complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
- 
+    std::cout << "finish"<< std::endl;
 }
 	
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])

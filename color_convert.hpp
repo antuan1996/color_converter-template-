@@ -121,7 +121,7 @@ template<Pack pack, Colorspace cs> const size_t* get_pel_step ()
 
 template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transfrom_coeffs()
 {
-    std::cout <<"st is " << st << std::endl; 
+    //std::cout <<"st is " << st << std::endl; 
 	if (from == to) {
 		return nullptr;
 	}
@@ -159,10 +159,10 @@ template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transf
 			return k_bt2020_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
-		//assert(0);
+		assert(0);
 	}
 	// TODO: Usupported standard
-	//assert(0);
+	assert(0);
 	return nullptr;
 }
 template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){
@@ -171,9 +171,9 @@ template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, c
         memcpy(meta.buf2, src_a + 2, 2);
         memcpy(meta.buf3, src_a + 4, 2);
         
-        memcpy(meta.buf3, src_a + stride[0] + 0, 2);
-        memcpy(meta.buf3, src_a + stride[0] + 2 ,2);
-        memcpy(meta.buf3, src_a + stride[0] + 4, 2);
+        memcpy(meta.buf4, src_a + stride[0] + 0, 2);
+        memcpy(meta.buf5, src_a + stride[0] + 2 ,2);
+        memcpy(meta.buf6, src_a + stride[0] + 4, 2);
     }
     else
         if(pack == Planar){
@@ -187,7 +187,7 @@ template <Pack pack> inline void load(ConvertMeta& meta, const uint8_t *src_a, c
             memcpy(meta.buf6, src_c + stride[2], 2);
         }
 }
-template <Pack pack> inline void unpack (ConvertMeta& meta, Context &ctx)
+template <Pack pack> inline void unpack (const ConvertMeta& meta, Context &ctx)
 {
 	if (pack == Interleaved) {
 		ctx.a1 = meta.buf1[0];
@@ -270,11 +270,11 @@ template <class T > inline T clip(T val_a, T min, T max)
 }
 template <class T> inline T round_shift(T val, const size_t n)
 {
-    //return (val + (1 << (n - 1))) >> n;
-    return val  >> n; 
+    return (val + (1 << (n - 1))) >> n;
+    //return val >> n; 
 }
 	
-template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t &v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
+template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
 {
 	if (cs == YUV444) {
 		y += offset_y;
@@ -283,19 +283,24 @@ template <Colorspace cs> inline void offset_yuv (int32_t &y, int32_t &u, int32_t
 	}
 }
 	
-template <Colorspace cs> static inline void clip_result (int32_t &val_a, int32_t &val_b, int32_t &val_c)
+template <Colorspace cs> static inline void clip_result (int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
+    //puts("before");
+    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
     if(cs == RGB){
-        val_a = clip(val_a, 16, 235);
-        val_b = clip(val_b, 16, 235);
-        val_c = clip(val_c, 16, 235);
+        val_a = clip(val_a, 16 << 8 , 235 << 8);
+        val_b = clip(val_b, 16 << 8, 235 << 8);
+        val_c = clip(val_c, 16 << 8, 235 << 8);
     }
     else
     if(cs == YUV444){
-        val_a = clip(val_a, 16, 225);
-        val_b = clip(val_b, 16, 240);
-        val_c = clip(val_c, 16, 240);
+        val_a = clip(val_a, 16 << 8, 235 << 8);
+        val_b = clip(val_b, 16 << 8, 240 << 8);
+        val_c = clip(val_c, 16 << 8, 240 << 8);
     }
+    //puts("after");
+    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
+    
 }
 
 /* 
@@ -313,14 +318,24 @@ static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int16_t tra
 	b = tmp2;
 	c = tmp3;
 }
-inline void complex_shift( int32_t& a, int32_t b, int32_t c, int n){
+inline void complex_shift( int32_t& a, int32_t& b, int32_t& c, int n){
     a = round_shift(a, n);
 	b = round_shift(b, n);
 	c = round_shift(c, n);
 }
 template <Colorspace from, Colorspace to> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
 {
-	//offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+	
+    
+#ifndef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
+    
+    //offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
     offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128, -128);
 	offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128, -128);
 	offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128, -128);
@@ -332,29 +347,34 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 	mat_mul(ctx.a4, ctx.b4, ctx.c4, transform_matrix);
 	
 	
-#ifdef ENABLE_LOG
-	std::cout << src_a << " " << src_b << " " << src_c << std::endl;
-	std::cout << dst_a << " " << dst_b << " " << dst_c << std::endl;
-	std::cout << "******" << std::endl;
-#endif
 	
 	//offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
 	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << 8, 128 << 8);
     offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << 8, 128 << 8);
 	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 8, 128 << 8);
 	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 8, 128 << 8);
-	
+
+    clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
+    clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
+    clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
+    clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
+    
     complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
     complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
     complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
     complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
     
-    clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
-    clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
-    clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
-    clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
-    std::cout << "finish"<< std::endl;
-}
+    
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "*************************************" << std::endl;
+#endif
+    
+    
+    }
 	
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
 {
@@ -368,7 +388,7 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 	}
 }
 
-template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standard st> void colorspace_convert(const ConvertMeta& meta)
+template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
 	const int16_t *transform_matrix = get_transfrom_coeffs<from_cs, to_cs, st> ();
 	
@@ -393,7 +413,6 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
                               src_c + src_steps[2] * x,
                               meta.src_stride );
             unpack <from_pack>(meta, context);
-			
 			if (from_cs != to_cs) {
 				transform <from_cs, to_cs> (context, transform_matrix);
 			}

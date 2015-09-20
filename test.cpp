@@ -1,12 +1,14 @@
 //#define ENABLE_LOG
 
-#include "color_convert.hpp"
 
 #include <string>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <memory>
+#include "color_convert.hpp"
+
+
 
 using namespace ColorspaceConverter;
 
@@ -164,21 +166,21 @@ static int syntetic_test()
 	info.width = 8;
 	info.height = 2;
 	size_t stride = 8;
-    
 	for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride;
 		info.dst_stride[plane] = stride * 3;
 	}
-	info.src_data[0] = test_YUV444_bt601;
-	info.src_data[1] = test_YUV444_bt601 + 8 * 2;
-	info.src_data[2] = test_YUV444_bt601 + 8 * 2 + 8 * 2;
+    
+	info.src_data[0] = test_YUV444_bt2020;
+	info.src_data[1] = test_YUV444_bt2020 + 8 * 2;
+	info.src_data[2] = test_YUV444_bt2020 + 8 * 2 + 8 * 2;
 	info.dst_data[0] = result;
 	info.dst_data[1] = NULL;
 	info.dst_data[2] = NULL;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
+	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_2020> (info);
 	print_rgb(result);
-	for (size_t plane = 0; plane < 3; plane++) {
+    for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride * 3;
 		info.dst_stride[plane] = stride;
 	}
@@ -189,7 +191,7 @@ static int syntetic_test()
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 8 * 2;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_601> (info);
+	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_2020> (info);
 	print_yuv(result);
 	
 	return 0;

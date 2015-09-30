@@ -18,7 +18,8 @@ enum Colorspace
 	YUV444,
     YUV422,
     YUV420,
-	RGB
+	RGB,
+	A2R10G10B10
 };
 
 enum Standard
@@ -55,12 +56,12 @@ struct ConvertMeta
 	size_t height;
 	size_t src_stride[3];
 	size_t dst_stride[3];
-    uint8_t  buf1[2];
-    uint8_t  buf2[2];
-    uint8_t  buf3[2];
-    uint8_t  buf4[2];
-    uint8_t  buf5[2];
-    uint8_t  buf6[2];
+    uint8_t  buf1[16];
+    uint8_t  buf2[16];
+    uint8_t  buf3[16];
+    uint8_t  buf4[16];
+    uint8_t  buf5[16];
+    uint8_t  buf6[16];
 };
 
 static const int16_t k_bt601_RGB_to_YUV[3 * 3] =
@@ -162,11 +163,11 @@ template <Colorspace from, Colorspace to, Standard st> const int16_t* get_transf
 		return nullptr;
 	}
 	if (st == BT_601) {
-        if (from == RGB && (to == YUV444 || to == YUV422 ) ) {
+        if (from == RGB && (to == YUV444 || to == YUV422 || to == YUV420) ) {
 			return k_bt601_RGB_to_YUV;
 		}
         else
-		if ((from == YUV444 || from == YUV422) && to == RGB) {
+		if ((from == YUV444 || from == YUV422 || from == YUV420) && to == RGB) {
 			return k_bt601_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
@@ -215,6 +216,11 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const ui
             memcpy(meta.buf3, src_a + 4, 2);
             memcpy(meta.buf6, src_a + stride[0] + 4, 2);
         }
+        if( cs == A2R10G10B10)
+        {
+            memcpy( meta.buf1, src_a, 8);
+            memcpy( meta.buf2, src_a + stride[ 0 ], 8);
+        }
     }
     else
         if(pack == Planar){
@@ -239,6 +245,27 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const ui
                 memcpy(meta.buf5, src_c, 1);
             }
         }
+
+}
+static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& valc, const uint8_t* buf)
+{
+            // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
+
+            int32_t val;
+            val = buf[1] & (0xF);
+            val <<= 6;
+            val |= (buf[0] >> 2) & (0x3F);
+            vala = val;
+
+            val = ( buf[2] ) & (0x3F);
+            val <<= 4;
+            val |= (buf[1] >> 4) & (0xF);
+            valb = val;
+
+            val = ( buf[3] );
+            val <<= 4;
+            val |= ( buf[2] >> 4) & (0xF);
+            valc = val;
 
 }
 template <Pack pack, Colorspace cs> inline void unpack (const ConvertMeta& meta, Context &ctx)
@@ -279,7 +306,13 @@ template <Pack pack, Colorspace cs> inline void unpack (const ConvertMeta& meta,
 
             ctx.c3 = ctx.c4;
             ctx.b4 = ctx.b3;
-
+        }
+        if(cs == A2R10G10B10)
+        {
+            unpack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1, meta.buf1);
+            unpack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, meta.buf1 + 4);
+            unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, meta.buf2);
+            unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, meta.buf2 + 4);
         }
 	} else  { // planar
 		//p1 = 1_2
@@ -494,7 +527,7 @@ template <class T> inline T round_shift(T val, const size_t n)
 
 template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
 {
-	if (cs == YUV444 || cs == YUV422) {
+	if (cs == YUV444 || cs == YUV422 || cs == YUV420) {
 		y += offset_y;
 		u += offset_u;
 		v += offset_v;
@@ -512,7 +545,7 @@ template <Colorspace cs> static inline void clip_result (int32_t& val_a, int32_t
         val_c = clip(val_c, 16 << 10, 235 << 10);
     }
     else
-    if(cs == YUV444 || cs == YUV422 ){
+    if(cs == YUV444 || cs == YUV422 || cs == YUV420 ){
         val_a = clip(val_a, 16 << 10, 235 << 10);
         val_b = clip(val_b, 16 << 10, 240 << 10);
         val_c = clip(val_c, 16 << 10, 240 << 10);
@@ -584,12 +617,27 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
     scale_from <from>(ctx.a3, ctx.b3, ctx.c3);
     scale_from <from>(ctx.a4, ctx.b4, ctx.c4);
 
-
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
 
     offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128 * 4, -128 * 4);
 	offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128 * 4, -128 * 4);
 	offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128 * 4, -128 * 4);
 	offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, 0, -128 * 4, -128 * 4);
+
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
+
 
     // koeffs shifted right on 8
 
@@ -598,22 +646,50 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
 	mat_mul(ctx.a3, ctx.b3, ctx.c3, transform_matrix);
 	mat_mul(ctx.a4, ctx.b4, ctx.c4, transform_matrix);
 
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
 	//offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
 	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << 10, 128 << 10);
     offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << 10, 128 << 10);
 	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 10, 128 << 10);
 	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 10, 128 << 10);
 
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
     clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
     clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
     clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
     clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
 
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
     complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
     complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
     complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
     complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
 
+#ifdef ENABLE_LOG
+    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+#endif
     scale_to < to >(ctx.a1, ctx.b1, ctx.c1);
     scale_to < to >(ctx.a2, ctx.b2, ctx.c2);
     scale_to < to >(ctx.a3, ctx.b3, ctx.c3);
@@ -635,9 +711,18 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 	if (interleaved) {
 		ptr_a += stride[0] * 2;
 	} else {
-		ptr_a += stride[0] * 2;
-		ptr_b += stride[1] * 2;
-		ptr_c += stride[2] * 2;
+        if(cs == RGB || cs == YUV444 || cs == YUV422)
+        {
+            ptr_a += stride[0] * 2;
+            ptr_b += stride[1] * 2;
+            ptr_c += stride[2] * 2;
+        }
+        if(cs == YUV420)
+        {
+            ptr_a += stride[0] * 2;
+            ptr_b += stride[1];
+            ptr_c += stride[2];
+        }
 	}
 }
 

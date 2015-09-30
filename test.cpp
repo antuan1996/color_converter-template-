@@ -127,6 +127,19 @@ static int syntetic_test()
 		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
         16,128,     16,128,    210,16,  210,146,   170,166,  170,16,  106,202, 106,222
 	};
+    static uint8_t test_YUV420_bt601[(8 * 2) + 8] =
+	{
+		// Y
+		235, 235, 81, 81, 107, 107, 157, 157,
+        235, 235, 81, 81, 107, 107, 157, 157,
+
+        // Cb
+		128, 90,202, 111,
+
+
+		// Cr
+		128, 240, 62,25
+	};
     static uint8_t test_YUV444_bt601[(8 * 2) * 3] =
 	{
 		// Y
@@ -189,19 +202,30 @@ static int syntetic_test()
 	info.width = 8;
 	info.height = 2;
 	size_t stride = 8;
+	/*
 	for (size_t plane = 0; plane < 3; plane++) {
 		info.src_stride[plane] = stride;
 		info.dst_stride[plane] = stride * 3;
 	}
+    */
+    info.src_stride[0] = 8;
+    info.src_stride[1] = 4;
+    info.src_stride[2] = 4;
 
-	info.src_data[0] = test_YUV444_bt601;
-	info.src_data[1] = test_YUV444_bt601 + 8 * 2;
-	info.src_data[2] = test_YUV444_bt601 + 8 * 2 + 8 * 2;
+    info.dst_stride[0] = 8 * 3;
+    info.dst_stride[1] = 0;
+    info.dst_stride[2] = 0;
+
+
+
+	info.src_data[0] = test_YUV420_bt601;
+	info.src_data[1] = test_YUV420_bt601 + 8 * 2;
+	info.src_data[2] = test_YUV420_bt601 + 8 * 2 + 4;
 	info.dst_data[0] = result;
 	info.dst_data[1] = NULL;
 	info.dst_data[2] = NULL;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
+	colorspace_convert<YUV420, Planar, RGB, Interleaved, BT_601> (info);
 	print_rgb(result);
     #ifdef ENABLE_LOG
         std::cout << "Difference is " << check(result, test_rgb, 8 * 3, 2) << std::endl;

@@ -169,6 +169,11 @@ static int syntetic_test()
 		128, 240, 26, 118, 128, 138, 16, 230,
         66, 21, 175, 83, 235, 188, 133, 71
 	};
+    static uint8_t test_A2R10G10B10_bt601[(8 * 2) * 4] =
+	{
+        0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,    0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,
+        0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,    0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF
+    };
 	static uint8_t test_YUV444_bt2020[(8 * 2) * 3] =
 	{
 		// Y
@@ -188,6 +193,12 @@ static int syntetic_test()
 	{
         235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235,
         16,16,16,     16,16,16,     235,235,16,   235,235,16,   16,235,235,  16,235,235,   235,16,235,    235,16,235
+    };
+    static uint8_t test_twiseyuv[(8 * 2)*3] =
+    {
+        235, 81, 145, 41, 235, 81, 145, 41,
+        128, 90, 54, 240, 128, 90, 54, 240,
+        126, 240, 34, 110, 126, 240, 34, 110
     };
 
 	static uint8_t test_rgb[(8 * 2) * 3] =
@@ -233,17 +244,17 @@ static int syntetic_test()
 
 
     for (size_t plane = 0; plane < 3; plane++) {
-		info.src_stride[plane] = stride * 3;
+		info.src_stride[plane] = stride * 4;
 		info.dst_stride[plane] = stride;
 	}
-	info.src_data[0] = test_rgb;
+	info.src_data[0] = test_A2R10G10B10_bt601;
 	info.src_data[1] = nullptr;
 	info.src_data[2] = nullptr;
 	info.dst_data[0] = result;
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 8 * 2;
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, YUV444, Planar, BT_601> (info);
+	colorspace_convert<A2R10G10B10, Interleaved, YUV444, Planar, BT_601> (info);
     print_yuv(result);
     #ifdef ENABLE_LOG
         //std::cout << "Difference is " << check(result, test_YUV444_bt601, 8 * 3, 2) << std::endl;

@@ -121,6 +121,7 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
 {
 	if (cs == RGB) {
         posa = cur_pos * 3;
+        return;
 	}
 	if (cs == A2R10G10B10) {
         posa = cur_pos * 4;
@@ -239,9 +240,11 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const ui
             }
             if(cs == YUV422){
                 memcpy(meta.buf1, src_a, 2);
-                memcpy(meta.buf2, src_a + stride[0], 2);
-                memcpy(meta.buf3, src_b, 2);
-                memcpy(meta.buf5, src_c, 2);
+                memcpy(meta.buf2, src_a + stride[ 0 ], 2);
+                memcpy(meta.buf3, src_b, 1);
+                memcpy(meta.buf4, src_b + stride[ 1 ], 1);
+                memcpy(meta.buf5, src_c, 1);
+                memcpy(meta.buf6, src_c + stride[ 2 ], 1);
             }
             if(cs == YUV420){
                 memcpy(meta.buf1, src_a, 2);
@@ -363,8 +366,8 @@ template <Pack pack, Colorspace cs> inline void unpack (const ConvertMeta& meta,
         }
         if(cs == YUV422){
         // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
+        // p2 = 3,4
+        // p3 = 5,6
             ctx.a1 = meta.buf1[0];
             ctx.b1 = meta.buf3[0];
             ctx.c1 = meta.buf5[0];
@@ -374,8 +377,8 @@ template <Pack pack, Colorspace cs> inline void unpack (const ConvertMeta& meta,
             ctx.c2 = ctx.c1;
 
             ctx.a3 = meta.buf2[0];
-            ctx.b3 = meta.buf3[1];
-            ctx.c3 = meta.buf5[1];
+            ctx.b3 = meta.buf4[0];
+            ctx.c3 = meta.buf6[0];
 
             ctx.a4 = meta.buf2[1];
             ctx.b4 = ctx.b3;
@@ -414,6 +417,7 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, u
         if(cs == YUV444 || cs == RGB){
             memcpy(dst_a, meta.buf1, 6);
             memcpy(dst_a + stride[0], meta.buf4, 6);
+            return;
         }
         if(cs == YUV422){
             memcpy(dst_a, meta.buf1, 4);
@@ -427,6 +431,9 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, u
     }
     else
         if(pack == Planar){
+        //1_2
+        //3_4
+        //5_6
             if(cs == YUV444 || cs == RGB){
                 memcpy(dst_a, meta.buf1, 2);
                 memcpy(dst_a + stride[0],  meta.buf2, 2);
@@ -462,22 +469,25 @@ template <Pack pack, Colorspace cs> inline void pack_in(Context &ctx, ConvertMet
             ctx.c1 = (ctx.c1 + ctx.c2 + ctx.c3 + ctx.c4) / 4;
     }
 	if (pack == Interleaved){
+        // 1,[2,3]
+        // 4,[5,6]
         if(cs == RGB || cs == YUV444){
             meta.buf1[0] = ctx.a1;
             meta.buf1[1] = ctx.b1;
-            meta.buf2[0] = ctx.c1;
+            meta.buf1[2] = ctx.c1;
 
-            meta.buf2[1] = ctx.a2;
-            meta.buf3[0] = ctx.b2;
-            meta.buf3[1] = ctx.c2;
+            meta.buf1[3] = ctx.a2;
+            meta.buf1[4] = ctx.b2;
+            meta.buf1[5] = ctx.c2;
 
             meta.buf4[0] = ctx.a3;
             meta.buf4[1] = ctx.b3;
-            meta.buf5[0] = ctx.c3;
+            meta.buf4[2] = ctx.c3;
 
-            meta.buf5[1] = ctx.a4;
-            meta.buf6[0] = ctx.b4;
-            meta.buf6[1] = ctx.c4;
+            meta.buf4[3] = ctx.a4;
+            meta.buf4[4] = ctx.b4;
+            meta.buf4[5] = ctx.c4;
+            return;
         }
         if(cs == A2R10G10B10)
         {
@@ -680,7 +690,7 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
     std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
     std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
     std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    std::cout << "1||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
 #endif
 
     //offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
@@ -688,80 +698,84 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
     scale_from <from>(ctx.a2, ctx.b2, ctx.c2);
     scale_from <from>(ctx.a3, ctx.b3, ctx.c3);
     scale_from <from>(ctx.a4, ctx.b4, ctx.c4);
+    char from_type = (from == RGB || from == A2R10G10B10)? (1 << 1) : (1 << 2);
+    char to_type = (to == RGB || to == A2R10G10B10)? (1 << 1) : (1 << 2);
+    if (from_type != to_type)
+    {
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "2||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
+        offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128 * 4, -128 * 4);
+        offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128 * 4, -128 * 4);
+        offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128 * 4, -128 * 4);
+        offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, 0, -128 * 4, -128 * 4);
 
-    offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128 * 4, -128 * 4);
-	offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128 * 4, -128 * 4);
-	offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128 * 4, -128 * 4);
-	offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, 0, -128 * 4, -128 * 4);
-
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "3||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
 
 
-    // koeffs shifted right on 8
+        // koeffs shifted right on 8
 
-	mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
-	mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
-	mat_mul(ctx.a3, ctx.b3, ctx.c3, transform_matrix);
-	mat_mul(ctx.a4, ctx.b4, ctx.c4, transform_matrix);
+        mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
+        mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
+        mat_mul(ctx.a3, ctx.b3, ctx.c3, transform_matrix);
+        mat_mul(ctx.a4, ctx.b4, ctx.c4, transform_matrix);
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
-	//offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
-	offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << 10, 128 << 10);
-    offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << 10, 128 << 10);
-	offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 10, 128 << 10);
-	offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 10, 128 << 10);
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "4||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
+        //offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+        offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << 10, 128 << 10);
+        offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << 10, 128 << 10);
+        offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << 10, 128 << 10);
+        offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << 10, 128 << 10);
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
-    clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
-    clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
-    clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
-    clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "5||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
+        clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
+        clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
+        clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
+        clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
-    complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
-    complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
-    complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
-    complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "6||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
+        complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
+        complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
+        complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
+        complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
+    #ifdef ENABLE_LOG
+        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
+        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
+        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
+        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
+        std::cout << "7||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
+    #endif
+    } // if(from_type != to_type)
     scale_to < to >(ctx.a1, ctx.b1, ctx.c1);
     scale_to < to >(ctx.a2, ctx.b2, ctx.c2);
     scale_to < to >(ctx.a3, ctx.b3, ctx.c3);
@@ -772,7 +786,7 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
     std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
     std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
     std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "*************************************" << std::endl;
+    std::cout << "8*************************************" << std::endl;
 #endif
 
     }
@@ -783,14 +797,24 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 	if (interleaved) {
 		ptr_a += stride[0] * 2;
 	} else {
-        if(cs == RGB || cs == A2R10G10B10 || cs == YUV444 || cs == YUV422)
+        if(cs == RGB || cs == A2R10G10B10 || cs == YUV444)
         {
             ptr_a += stride[0] * 2;
             ptr_b += stride[1] * 2;
             ptr_c += stride[2] * 2;
         }
+        if( cs == YUV422)
+        {
+            ptr_a += stride[0] * 2;
+            ptr_b += stride[1] * 2;
+            ptr_c += stride[2] * 2;
+
+        }
         if(cs == YUV420)
         {
+            // w
+            // w/2 (for 2 line)
+            // w/2 (for 2 line)
             ptr_a += stride[0] * 2;
             ptr_b += stride[1];
             ptr_c += stride[2];
@@ -822,18 +846,20 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
                               src_c + shift_c,
                               meta.src_stride);
             unpack <from_pack, from_cs>(meta, context);
-			if (from_cs != to_cs) {
+
 				transform <from_cs, to_cs> (context, transform_matrix);
-			}
 
 
 			get_pos <to_pack, to_cs>(shift_a, shift_b, shift_c, x);
+			std::cout << "converted \n";
 			pack_in<to_pack, to_cs > (context, meta);
+			std::cout  << "packed\n";
 			store<to_pack, to_cs > (meta,
 											 dst_a + shift_a,
 											 dst_b + shift_b,
 											 dst_c + shift_c,
 											 meta.dst_stride);
+            std::cout  << "stored\n";
 		}
 		next_row <from_cs, from_pack> (src_a, src_b, src_c, meta.src_stride);
 		next_row <to_cs, to_pack> (dst_a, dst_b, dst_c, meta.dst_stride);

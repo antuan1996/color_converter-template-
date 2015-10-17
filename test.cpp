@@ -190,6 +190,12 @@ static int syntetic_test()
         235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235,
         16,16,16,     16,16,16,     235,235,16,   235,235,16,   16,235,235,  16,235,235,   235,16,235,    235,16,235
     };
+    static uint8_t test_rgb_yuv420[(8 * 2) * 3] =
+	{
+        235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235,
+        235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235
+    };
+
     static uint8_t test_yuv422p_bt601[(8 * 2) + 8 + 8] =
     {
         235, 235, 81, 81, 145, 145, 41, 41,
@@ -422,6 +428,85 @@ static int syntetic_test()
 	print_yuv(result);
 
     //*****************************************************************
+
+    std::cout << "Same formats test\n";
+
+    std::cout << "YUV444 interleaved to planar";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 8;
+    info.dst_stride[2] = 8;
+
+	info.src_data[0] = test_yuv444i_bt601;
+	info.dst_data[0] = result;
+	info.dst_data[1] = result +  8 * 2;
+	info.dst_data[2] = result +  8 * 2 + 8 * 2;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<YUV444, Interleaved, YUV444, Planar, BT_601> (info);
+	print_yuv(result);
+
+    std::cout << "YUV444 interleaved to interleaved";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8 * 3;
+    info.dst_stride[1] = 8;
+    info.dst_stride[2] = 8;
+
+	info.src_data[0] = test_yuv444i_bt601;
+	info.dst_data[0] = result;
+	info.dst_data[1] = result;
+	info.dst_data[2] = result;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<YUV444, Interleaved, YUV444, Interleaved, BT_601> (info);
+	print_yuv(result);
+
+
+    //*****************************************************************
+
+    std::cout << "Packing test\n";
+    std::cout << "RGB24 interleaved to YUV422 interleaved";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8 * 2;
+    info.dst_stride[1] = 0;
+    info.dst_stride[2] = 0;
+
+	info.src_data[0] = test_rgb;
+	info.dst_data[0] = result;
+	info.dst_data[1] = nullptr;
+	info.dst_data[2] = nullptr;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<RGB, Interleaved, YUV422, Interleaved, BT_601> (info);
+	print_yuv(result);
+    //*****************************************************************
+    std::cout << "Packing test\n";
+    std::cout << "RGB24 interleaved to YUV420 planar";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 4;
+    info.dst_stride[2] = 4;
+
+	info.src_data[0] = test_rgb_yuv420;
+	info.dst_data[0] = result;
+	info.dst_data[1] = result + 8 * 2;
+	info.dst_data[2] = result + 8 * 2 + 4;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<RGB, Interleaved, YUV420, Planar, BT_601> (info);
+	print_yuv(result);
 
 	return 0;
 }

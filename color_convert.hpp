@@ -21,7 +21,11 @@ enum Colorspace
 	RGB,
 	A2R10G10B10
 };
-
+enum Range
+{
+    FULL_RANGE,
+    NORM_RANGE
+};
 enum Standard
 {
 	BT_601,
@@ -211,9 +215,6 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const ui
     if(pack == Interleaved ){
         // 1,[2,3]
         // 4,[5,6]
-        // TODO refactoring!!!
-        //memcpy(meta.buf1, src_a , 2);
-        //memcpy(meta.buf4, src_a + stride[0] + 0, 2);
         if(cs == YUV444 || cs == RGB){
                 memcpy(meta.buf1, src_a , 6);
                 memcpy(meta.buf4, src_a + stride[0] ,6);
@@ -411,9 +412,6 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, u
     if(pack == Interleaved){
         // 1,[2,3]
         // 4,[5,6]
-        // TODO refactoring!!!
-        //memcpy(dst_a , meta.buf1 , 2);
-        //memcpy(dst_a + stride[0] + 0, meta.buf4, 2);
         if(cs == YUV444 || cs == RGB){
             memcpy(dst_a, meta.buf1, 6);
             memcpy(dst_a + stride[0], meta.buf4, 6);
@@ -652,118 +650,99 @@ template <Colorspace from, Colorspace to> inline void scale(int32_t& val_a, int3
     //TODO unsupported formats
 }
 
-template <Colorspace cs> inline void set_norm_range(int32_t& val_a, int32_t& val_b, int32_t& val_c)
+template <Colorspace cs, Range from_range, Range to_range> inline void convert_range(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
     if(cs == RGB)
     {
-        val_a *= 219;
-        val_b *= 219;
-        val_c *= 219;
+        if(from_range == NORM_RANGE && to_range == FULL_RANGE)
+        {
+            val_a -= 16;
+            val_b -= 16;
+            val_c -= 16;
 
-        val_a >>= 8;
-        val_b >>= 8;
-        val_c >>= 8;
+            val_a <<= 8;
+            val_b <<= 8;
+            val_c <<= 8;
 
-        //TODO optimize offset
-        val_a += 16;
-        val_b += 16;
-        val_c += 16;
+            val_a /= 219;
+            val_b /= 219;
+            val_c /= 219;
+        }
+        if(from_range == FULL_RANGE && to_range == NORM_RANGE)
+        {
+            val_a *= 219;
+            val_b *= 219;
+            val_c *= 219;
+
+            val_a >>= 8;
+            val_b >>= 8;
+            val_c >>= 8;
+
+            //TODO optimize offset
+            val_a += 16;
+            val_b += 16;
+            val_c += 16;
+        }
         return;
-    }
-
-    if(cs == YUV444 || cs == YUV420 || cs == YUV422)
+    } // RGB
+    if( (cs == YUV444 || cs == YUV422 || cs == YUV420) )
     {
-        val_a *= 219;
-        val_b *= 224;
-        val_c *= 224;
+        if(from_range == NORM_RANGE && to_range == FULL_RANGE)
+        {
+            val_a -= 16;
+            val_b -= 16;
+            val_c -= 16;
 
-        val_a >>= 8;
-        val_b >>= 8;
-        val_c >>= 8;
+            val_a <<= 8;
+            val_b <<= 8;
+            val_c <<= 8;
 
-        //TODO optimize offset
-        val_a += 16;
-        val_b += 16;
-        val_c += 16;
+            val_a /= 219;
+            val_b /= 224;
+            val_c /= 224;
+        }
+        if(from_range == FULL_RANGE && to_range == NORM_RANGE)
+        {
+            val_a *= 219;
+            val_b *= 224;
+            val_c *= 224;
 
+            val_a >>= 8;
+            val_b >>= 8;
+            val_c >>= 8;
+
+            //TODO optimize offset
+            val_a += 16;
+            val_b += 16;
+            val_c += 16;
+        }
         return;
-    }
-    if(cs == A2R10G10B10)
+    } //YUV
+    if(cs == A2R10G10B10 )
     {
-        val_a *= 219 << 2;
-        val_b *= 219 << 2;
-        val_c *= 219 << 2;
+        if(from_range == NORM_RANGE && to_range == FULL_RANGE)
+        {
+            val_a -= 16 << 2;
+            val_b -= 16 << 2;
+            val_c -= 16 << 2;
 
-        val_a >>= 10;
-        val_b >>= 10;
-        val_c >>= 10;
+            val_a  <<= 10;
+            val_b  <<= 10;
+            val_c  <<= 10;
 
-        //TODO optimize offset
-        val_a += 16 << 2;
-        val_b += 16 << 2;
-        val_c += 16 << 2;
+            val_a /= 219 << 2;
+            val_b /= 219 << 2;
+            val_c /= 219 << 2;
+        }
         return;
 
     }
-    assert(0);
-}
-template <Colorspace cs> inline void set_full_range(int32_t& val_a, int32_t& val_b, int32_t& val_c)
-{
-    if(cs == RGB)
-    {
-        val_a -= 16;
-        val_b -= 16;
-        val_c -= 16;
-
-        val_a <<= 8;
-        val_b <<= 8;
-        val_c <<= 8;
-
-        val_a /= 219;
-        val_b /= 219;
-        val_c /= 219;
-
-        return;
-    }
-    if(cs == YUV444 || cs == YUV422 || cs == YUV420)
-    {
-        val_a -= 16;
-        val_b -= 16;
-        val_c -= 16;
-
-        val_a <<= 8;
-        val_b <<= 8;
-        val_c <<= 8;
-
-        val_a /= 219;
-        val_b /= 224;
-        val_c /= 224;
-
-        return;
-    }
-    if(cs == A2R10G10B10)
-    {
-        val_a -= 16 << 2;
-        val_b -= 16 << 2;
-        val_c -= 16 << 2;
-
-        val_a  <<= 10;
-        val_b  <<= 10;
-        val_c  <<= 10;
-
-        val_a /= 219 << 2;
-        val_b /= 219 << 2;
-        val_c /= 219 << 2;
-
-        return;
-
-    }
+    // TODO Unsupported formats
     assert(0);
 }
 
-template <Colorspace from, Colorspace to> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
+template <Colorspace from_cs, Range from_range,  Colorspace to_cs, Range to_range> inline void transform (Context &ctx, const int16_t transform_matrix[3 * 3])
 {
-
 
 #ifdef ENABLE_LOG
     std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -772,22 +751,22 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
     std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
     std::cout << "1||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
 #endif
-    uint32_t extra_shift = (to == A2R10G10B10)? 2 : 0;
-    //offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
-    scale<from, to>(ctx.a1, ctx.b1, ctx.c1);
-    scale<from, to>(ctx.a2, ctx.b2, ctx.c2);
-    scale<from, to>(ctx.a3, ctx.b3, ctx.c3);
-    scale<from, to>(ctx.a4, ctx.b4, ctx.c4);
+    uint32_t extra_shift = (to_cs == A2R10G10B10)? 2 : 0;
+    //offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+    scale<from_cs, to_cs>(ctx.a1, ctx.b1, ctx.c1);
+    scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
+    scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
+    scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
 
-    char from_type = (from == RGB || from == A2R10G10B10)? (1 << 1) : (1 << 2);
-    char to_type = (to == RGB || to == A2R10G10B10)? (1 << 1) : (1 << 2);
+    char from_type = (from_cs == RGB || from_cs == A2R10G10B10)? (1 << 1) : (1 << 2);
+    char to_type = (to_cs == RGB || to_cs == A2R10G10B10)? (1 << 1) : (1 << 2);
 
     if (from_type != to_type)
     {
-        set_norm_range <from>(ctx.a1, ctx.b1, ctx.c1);
-        set_norm_range <from>(ctx.a2, ctx.b2, ctx.c2);
-        set_norm_range <from>(ctx.a3, ctx.b3, ctx.c3);
-        set_norm_range <from>(ctx.a4, ctx.b4, ctx.c4);
+        convert_range <from_cs, from_range, NORM_RANGE>(ctx.a1, ctx.b1, ctx.c1);
+        convert_range <from_cs, from_range, NORM_RANGE>(ctx.a2, ctx.b2, ctx.c2);
+        convert_range <from_cs, from_range, NORM_RANGE>(ctx.a3, ctx.b3, ctx.c3);
+        convert_range <from_cs, from_range, NORM_RANGE>(ctx.a4, ctx.b4, ctx.c4);
 
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -797,10 +776,10 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
         std::cout << "2||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
 
-        offset_yuv <from> (ctx.a1, ctx.b1, ctx.c1, 0, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from> (ctx.a2, ctx.b2, ctx.c2, 0, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from> (ctx.a3, ctx.b3, ctx.c3, 0, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from> (ctx.a4, ctx.b4, ctx.c4, 0, -128 << extra_shift, -128 << extra_shift);
+        offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, 0, -128 << extra_shift, -128 << extra_shift);
+        offset_yuv <from_cs> (ctx.a2, ctx.b2, ctx.c2, 0, -128 << extra_shift, -128 << extra_shift);
+        offset_yuv <from_cs> (ctx.a3, ctx.b3, ctx.c3, 0, -128 << extra_shift, -128 << extra_shift);
+        offset_yuv <from_cs> (ctx.a4, ctx.b4, ctx.c4, 0, -128 << extra_shift, -128 << extra_shift);
 
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -826,10 +805,10 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
         std::cout << "4||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
         //offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
-        offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        offset_yuv <to_cs> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        offset_yuv <to_cs> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        offset_yuv <to_cs> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        offset_yuv <to_cs> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
 
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -838,10 +817,10 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
         std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
         std::cout << "5||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
-        clip_result <to> (ctx.a1, ctx.b1, ctx.c1);
-        clip_result <to> (ctx.a2, ctx.b2, ctx.c2);
-        clip_result <to> (ctx.a3, ctx.b3, ctx.c3);
-        clip_result <to> (ctx.a4, ctx.b4, ctx.c4);
+        clip_result <to_cs> (ctx.a1, ctx.b1, ctx.c1);
+        clip_result <to_cs> (ctx.a2, ctx.b2, ctx.c2);
+        clip_result <to_cs> (ctx.a3, ctx.b3, ctx.c3);
+        clip_result <to_cs> (ctx.a4, ctx.b4, ctx.c4);
 
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -862,13 +841,19 @@ template <Colorspace from, Colorspace to> inline void transform (Context &ctx, c
         std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
         std::cout << "7||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
-        set_full_range<to>(ctx.a1, ctx.b1, ctx.c1);
-        set_full_range<to>(ctx.a2, ctx.b2, ctx.c2);
-        set_full_range<to>(ctx.a3, ctx.b3, ctx.c3);
-        set_full_range<to>(ctx.a4, ctx.b4, ctx.c4);
+        convert_range <to_cs, NORM_RANGE, to_range>(ctx.a1, ctx.b1, ctx.c1);
+        convert_range <to_cs, NORM_RANGE, to_range>(ctx.a2, ctx.b2, ctx.c2);
+        convert_range <to_cs, NORM_RANGE, to_range>(ctx.a3, ctx.b3, ctx.c3);
+        convert_range <to_cs, NORM_RANGE, to_range>(ctx.a4, ctx.b4, ctx.c4);
 
-
-    } // if(from_type != to_type)
+    } // if(from_cs_type != to_type)
+    else // (from_type == to_type)
+    {
+        convert_range <to_cs, from_range, to_range>(ctx.a1, ctx.b1, ctx.c1);
+        convert_range <to_cs, from_range, to_range>(ctx.a2, ctx.b2, ctx.c2);
+        convert_range <to_cs, from_range, to_range>(ctx.a3, ctx.b3, ctx.c3);
+        convert_range <to_cs, from_range, to_range>(ctx.a4, ctx.b4, ctx.c4);
+    }
 
 #ifdef ENABLE_LOG
     std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
@@ -911,7 +896,7 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 	}
 }
 
-template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standard st> void colorspace_convert(ConvertMeta& meta)
+template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs, Pack to_pack, Range to_range, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
 	const int16_t *transform_matrix = get_transfrom_coeffs<from_cs, to_cs, st> ();
 
@@ -936,7 +921,7 @@ template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, St
                               meta.src_stride);
             unpack <from_pack, from_cs>(meta, context);
 
-				transform <from_cs, to_cs> (context, transform_matrix);
+				transform <from_cs, from_range, to_cs, to_range> (context, transform_matrix);
 
 
 			get_pos <to_pack, to_cs>(shift_a, shift_b, shift_c, x);

@@ -62,47 +62,47 @@ struct ConvertMeta
 	size_t dst_stride[3];
 };
 
-static int32_t k_bt601_RGB_to_YUV[3 * 3] =
+static const int32_t k_bt601_RGB_to_YUV[3 * 3] =
 {
 	77,  150,  29,
 	-44,  -87, 131,
 	131, -110, -21,
 };
 
-static int32_t e_matrix[3 * 3] =
+static const int32_t e_matrix[3 * 3] =
 {
 	256, 0, 0,
 	0, 256, 0,
 	0, 0, 256
 };
 
-static int32_t k_bt709_RGB_to_YUV[3 * 3] =
+static const int32_t k_bt709_RGB_to_YUV[3 * 3] =
 {
 	54, 183, 18,
 	-30, -101, 131,
 	131, -119, -12
 };
 
-static int32_t k_bt2020_RGB_to_YUV[3 * 3] =
+static const int32_t k_bt2020_RGB_to_YUV[3 * 3] =
 {
     67, 174, 15,
     -37, -94, 131,
     131, -120, -10
 };
-static int32_t k_bt601_YUV_to_RGB[3 * 3] =
+static const int32_t k_bt601_YUV_to_RGB[3 * 3] =
 {
 	256,   0,  351,
 	256, -86, -179,
 	256, 444,    0
 };
 
-static int32_t k_bt709_YUV_to_RGB[3 * 3] =
+static const int32_t k_bt709_YUV_to_RGB[3 * 3] =
 {
 	256, 0 , 394,
 	256, -47, -117,
 	256, 465,    0
 };
-static int32_t k_bt2020_YUV_to_RGB[3 * 3] =
+static const int32_t k_bt2020_YUV_to_RGB[3 * 3] =
 {
     256, 0, 369,
     256, -41, -143,
@@ -138,6 +138,10 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
             posb = cur_pos;
             posc = cur_pos;
         }
+        if(pack == SemiPlanar){
+            posa =cur_pos;
+            posb = cur_pos * 2;
+        }
         if(pack == Interleaved){
             posa =cur_pos * 3;
         }
@@ -148,10 +152,16 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
             posb = cur_pos / 2;
             posc = cur_pos / 2;
         }
+        if(pack == SemiPlanar){
+            posa = cur_pos;
+            posb = cur_pos;
+        }
         if(pack == Interleaved)
             posa = cur_pos * 2;
 	}
 	if (cs == YUV420) {
+        if(pack == Planar)
+        {
             // Y Y
             // Y Y
             //U
@@ -159,25 +169,31 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
             posa = cur_pos;
             posb = cur_pos / 2;
             posc = cur_pos / 2;
+        }
+        if(pack == SemiPlanar){
+            posa =cur_pos;
+            posb = cur_pos;
+        }
 	}
 
     // TODO: Usupported transform
     //assert(0);
 }
 
-template <Colorspace from, Colorspace to, Standard st> int32_t* get_transfrom_coeffs()
+template <Colorspace from, Colorspace to, Standard st> void write_transfrom_coeffs(int32_t* res_matrix)
 {
     //std::cout <<"st is " << st << std::endl;
 	//assert(from != to);
 	//	return nullptr;
 	//}
+	const int32_t* matrix = e_matrix;
 	if (st == BT_601) {
         if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422 || to == YUV420) ) {
-			return  k_bt601_RGB_to_YUV;
+			matrix =  k_bt601_RGB_to_YUV;
 		}
         else
 		if ((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10) ) {
-			return k_bt601_YUV_to_RGB;
+			matrix =  k_bt601_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
 		//else
@@ -185,12 +201,12 @@ template <Colorspace from, Colorspace to, Standard st> int32_t* get_transfrom_co
 	}
     else
     if (st == BT_709) {
-		if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422 ) ) {
-			return k_bt709_RGB_to_YUV;
+		if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422  || to == YUV420 ) ) {
+			matrix =  k_bt709_RGB_to_YUV;
 		}
         else
-		if ((from == YUV444 || from == YUV422) && (to == RGB || to == A2R10G10B10)) {
-			return  k_bt709_YUV_to_RGB;
+		if ((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10)) {
+			matrix = k_bt709_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
 		//else
@@ -198,20 +214,23 @@ template <Colorspace from, Colorspace to, Standard st> int32_t* get_transfrom_co
 	}
     else
     if (st == BT_2020) {
-        if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422 ) ) {
-			return  k_bt2020_RGB_to_YUV;
+        if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422  || to == YUV420) ) {
+			matrix = k_bt2020_RGB_to_YUV;
 		}
-		if((from == YUV444 || from == YUV422) && (to == RGB || to == A2R10G10B10)) {
-			return  k_bt2020_YUV_to_RGB;
+		if((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10)) {
+			matrix =  k_bt2020_YUV_to_RGB;
 		}
 		// TODO: Usupported transform
 		//assert(0);
 	}
 	// TODO: Usupported standard
 	//assert(0);
-    return  e_matrix;
-
-	return nullptr;
+    for(int r=0; r < 3; ++r)
+    {
+        res_matrix[r*3 + 0] = matrix[ r*3 + 0 ];
+        res_matrix[r*3 + 1] = matrix[ r*3 + 1 ];
+        res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
+    }
 }
 /*
 template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, const uint8_t *src_a, const uint8_t *src_b, const uint8_t *src_c, const size_t stride[3]){
@@ -352,7 +371,9 @@ template <Pack pack, Colorspace cs> inline void unpack (ConvertMeta& meta, Conte
             unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, src_na);
             unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, src_na + 4);
         }
-	} else  { // planar
+	}
+	else  if( pack == Planar)
+	{ // planar
 		//p1 = 1_2
         //p2 = 3_4
         //p3 = 5_6
@@ -400,6 +421,69 @@ template <Pack pack, Colorspace cs> inline void unpack (ConvertMeta& meta, Conte
             ctx.a1 = srca[0];
             ctx.b1 = srcb[0];
             ctx.c1 = srcc[0];
+
+            ctx.a2 = srca[1];
+            ctx.b2 = ctx.b1;
+            ctx.c2 = ctx.c1;
+
+            ctx.a3 = src_na[0];
+            ctx.b3 = ctx.b1;
+            ctx.c3 = ctx.c1;
+
+            ctx.a4 = src_na[1];
+            ctx.b4 = ctx.b1;
+            ctx.c4 = ctx.c1;;
+        }
+	}
+	else
+	{ // semiplanar
+		//p1 = 1_2
+        //p2 = 3_4
+        //p3 = 5_6
+        if(cs == RGB || cs == YUV444){
+            ctx.a1 = srca[0];
+            ctx.b1 = srcb[0];
+            ctx.c1 = srcb[1];
+
+            ctx.a2 = srca[1];
+            ctx.b2 = srcb[2];
+            ctx.c2 = srcc[3];
+
+            ctx.a3 = src_na[0];
+            ctx.b3 = src_nb[0];
+            ctx.c3 = src_nb[1];
+
+            ctx.a4 = src_na[1];
+            ctx.b4 = src_nb[2];
+            ctx.c4 = src_nc[3];
+        }
+        if(cs == YUV422){
+        // p1 = 1,2
+        // p2 = 3,4
+        // p3 = 5,6
+            ctx.a1 = srca[0];
+            ctx.b1 = srcb[0];
+            ctx.c1 = srcb[1];
+
+            ctx.a2 = srca[1];
+            ctx.b2 = ctx.b1;
+            ctx.c2 = ctx.c1;
+
+            ctx.a3 = src_na[0];
+            ctx.b3 = src_nb[0];
+            ctx.c3 = src_nb[1];
+
+            ctx.a4 = src_na[1];
+            ctx.b4 = ctx.b3;
+            ctx.c4 = ctx.c3;
+        }
+        if(cs == YUV420){
+        // p1 = 1,2
+        // p2 = 3
+        // p3 = 5
+            ctx.a1 = srca[0];
+            ctx.b1 = srcb[0];
+            ctx.c1 = srcb[1];
 
             ctx.a2 = srca[1];
             ctx.b2 = ctx.b1;
@@ -521,7 +605,7 @@ template <Pack pack, Colorspace cs> inline void pack_in(Context &ctx, ConvertMet
             dst_na[2] = ctx.a4;
             dst_na[3] = ctx.c4;
         }
-	} else  { // planar
+	} else if(pack == Planar) { // planar
 		//p1 = 1_2
         //p2 = 3_4
         //p3 = 5_6
@@ -572,6 +656,59 @@ template <Pack pack, Colorspace cs> inline void pack_in(Context &ctx, ConvertMet
             dstb[0] = ctx.b1;
 
             dstc[0] = ctx.c1;
+        }
+	}
+	else { // semiplanar
+		//p1 = 1_2
+        //p2 = 3_4
+        //p3 = 5_6
+        if(cs == RGB || cs == YUV444){
+            dsta[ 0 ] = ctx.a1;
+            dsta[ 1 ] = ctx.a2;
+
+            dst_na[ 0 ] = ctx.a3;
+            dst_na[ 1 ] = ctx.a4;
+
+            dstb[ 0 ] = ctx.b1;
+            dstb[ 1 ] = ctx.c1;
+
+            dstb[ 2 ] = ctx.b2;
+            dstb[ 3 ] = ctx.c2;
+
+            dst_nb[ 0 ] = ctx.b3;
+            dst_nb[ 1 ] = ctx.c3;
+
+            dst_nb[ 2 ] = ctx.b4;
+            dst_nb[ 3 ] = ctx.c4;
+        }
+        if(cs == YUV422){
+        // p1 = 1,2
+        // p2 = 3
+        // p3 = 5
+            dsta[0] = ctx.a1;
+            dsta[1] = ctx.a2;
+
+            dst_na[0] = ctx.a3;
+            dst_na[1] = ctx.a4;
+
+            dstb[0] = ctx.b1;
+            dstb[1] = ctx.c1;
+
+            dst_nb[0] = ctx.b3;
+            dst_nb[1] = ctx.c3;
+
+        }
+        if(cs == YUV420){
+        // p1 = 1,2
+        // p2 = 3
+        // p3 = 5
+            dsta[0] = ctx.a1;
+            dsta[1] = ctx.a2;
+            dst_na[0] = ctx.a3;
+            dst_na[1] = ctx.a4;
+
+            dstb[0] = ctx.b1;
+            dstb[1] = ctx.c1;
         }
 	}
 }
@@ -820,8 +957,11 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         std::cout << "3||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
 
-
+    #ifdef ENABLE_LOG
         // koeffs shifted right on 8
+        for(int r = 0 ; r < 3; ++r)
+            std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
+    #endif
 
         mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
         mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
@@ -925,8 +1065,25 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 
 template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs, Pack to_pack, Range to_range, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
-	int32_t *transform_matrix = get_transfrom_coeffs<from_cs, to_cs, st>();
+	int32_t transform_matrix[ 3*3 ];
+    write_transfrom_coeffs<from_cs, to_cs, st>(transform_matrix);
+
+    #ifdef ENABLE_LOG
+        // koeffs shifted right on 8
+        for(int r = 0 ; r < 3; ++r)
+            std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
+
+    #endif
+
     convert_range <from_cs, from_range, to_cs, to_range>(transform_matrix);
+
+    #ifdef ENABLE_LOG
+        // koeffs shifted right on 8
+        for(int r = 0 ; r < 3; ++r)
+            std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
+
+    #endif
+
 
 	uint8_t* src_a = meta.src_data[0];
 	uint8_t* src_b = meta.src_data[1];

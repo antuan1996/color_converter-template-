@@ -1,4 +1,4 @@
-//#define ENABLE_LOG
+#define ENABLE_LOG
 
 
 #include <string>
@@ -124,10 +124,19 @@ static int syntetic_test()
 {
      static uint8_t test_yuv422i_bt601[(8 * 2) * 2] =
 	{
-		// Y
 		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
         16,128,     16,128,    210,16,  210,146,   170,166,  170,16,  106,202, 106,222
 	};
+	 static uint8_t test_yuv444s_bt601[(8 * 2) + 8 * 2 * 2] =
+	{
+        235, 81, 145, 41, 16, 210, 170, 106,
+        107, 157, 74, 178, 94, 147, 115, 95,
+
+        128, 128,   90, 240,    54, 34,     240, 110,   128,128,    16,146,     166,16,     202,222,
+        202,62,     111,25,     221,167,    34,92,      147,231,    52,192,     71,137,     147,71
+
+	};
+
     static uint8_t test_yuv444p_bt601[(8 * 2) * 3] =
 	{
 		// Y
@@ -507,6 +516,48 @@ static int syntetic_test()
 	memset(result, 0xff, sizeof(result));
 	colorspace_convert<RGB, Interleaved, NORM_RANGE, YUV420, Planar, NORM_RANGE, BT_601> (info);
 	print_yuv(result);
+    //*****************************************************************
+    std::cout << "Semiplanar test\n";
+    std::cout << "YUV444 semiplanar to planar";
+    info.src_stride[0] = 8;
+    info.src_stride[1] = 8 * 2;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 8;
+    info.dst_stride[2] = 8;
+
+	info.src_data[0] = test_yuv444s_bt601;
+	info.src_data[1] = test_yuv444s_bt601 + 8 * 2;
+
+
+	info.dst_data[0] = result;
+	info.dst_data[1] = result + 8 * 2;
+	info.dst_data[2] = result + 8 * 2 + 8 * 2;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<YUV444, SemiPlanar, NORM_RANGE, YUV444, Planar, NORM_RANGE, BT_601> (info);
+	print_yuv(result);
+    //*****************************************************************
+    std::cout << "YUV444 planar to semiplanar";
+    info.src_stride[0] = 8;
+    info.src_stride[1] = 8;
+    info.src_stride[2] = 8;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 8 * 2;
+
+	info.src_data[0] = test_yuv444p_bt601;
+	info.src_data[1] = test_yuv444p_bt601 + 8 * 2;
+	info.src_data[2] = test_yuv444p_bt601 + 8 * 2 + 8 * 2;
+
+	info.dst_data[0] = result;
+	info.dst_data[1] = result + 8 * 2;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<YUV444, Planar, NORM_RANGE, YUV444, SemiPlanar, NORM_RANGE, BT_601> (info);
+	print_yuv(result);
+
 
 	return 0;
 }

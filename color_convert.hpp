@@ -180,13 +180,9 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
     //assert(0);
 }
 
-template <Colorspace from, Colorspace to, Standard st> void write_transfrom_coeffs(int32_t* res_matrix)
+template <Colorspace from, Colorspace to, Standard st> void set_transfrom_coeffs(int32_t* res_matrix)
 {
-    //std::cout <<"st is " << st << std::endl;
-	//assert(from != to);
-	//	return nullptr;
-	//}
-	const int32_t* matrix = e_matrix;
+   const int32_t* matrix = e_matrix;
 	if (st == BT_601) {
         if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422 || to == YUV420) ) {
 			matrix =  k_bt601_RGB_to_YUV;
@@ -195,9 +191,6 @@ template <Colorspace from, Colorspace to, Standard st> void write_transfrom_coef
 		if ((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10) ) {
 			matrix =  k_bt601_YUV_to_RGB;
 		}
-		// TODO: Usupported transform
-		//else
-        //assert(0);
 	}
     else
     if (st == BT_709) {
@@ -223,8 +216,7 @@ template <Colorspace from, Colorspace to, Standard st> void write_transfrom_coef
 		// TODO: Usupported transform
 		//assert(0);
 	}
-	// TODO: Usupported standard
-	//assert(0);
+	// copying from const to mutable
     for(int r=0; r < 3; ++r)
     {
         res_matrix[r*3 + 0] = matrix[ r*3 + 0 ];
@@ -261,8 +253,6 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
 
     if (pack == Interleaved)
     {
-        // 1,[2,3]
-        // 4,[5,6]
         if(cs == RGB || cs == YUV444){
             ctx.a1 = srca[0];
             ctx.b1 = srca[1];
@@ -302,11 +292,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
         }
 	}
 	else  if( pack == Planar)
-	{ // planar
-		//p1 = 1_2
-        //p2 = 3_4
-        //p3 = 5_6
-        if(cs == RGB || cs == YUV444){
+	{
+	  if(cs == RGB || cs == YUV444){
             ctx.a1 = srca[0];
             ctx.b1 = srcb[0];
             ctx.c1 = srcc[0];
@@ -323,10 +310,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
             ctx.b4 = src_nb[1];
             ctx.c4 = src_nc[1];
         }
-        if(cs == YUV422){
-        // p1 = 1,2
-        // p2 = 3,4
-        // p3 = 5,6
+        if(cs == YUV422)
+        {
             ctx.a1 = srca[0];
             ctx.a2 = srca[1];
             ctx.a3 = src_na[0];
@@ -341,10 +326,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
 
 
         }
-        if(cs == YUV420){
-        // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
+        if(cs == YUV420)
+        {
             ctx.a1 = srca[0];
             ctx.a2 = srca[1];
             ctx.a3 = src_na[0];
@@ -358,11 +341,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
         }
 	}
 	else
-	{ // semiplanar
-		//p1 = 1_2
-        //p2 = 3_4
-        //p3 = 5_6
-        if(cs == RGB || cs == YUV444){
+	{
+	  if(cs == RGB || cs == YUV444){
             ctx.a1 = srca[0];
             ctx.b1 = srcb[0];
             ctx.c1 = srcb[1];
@@ -379,10 +359,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
             ctx.b4 = src_nb[2];
             ctx.c4 = src_nb[3];
         }
-        if(cs == YUV422){
-        // p1 = 1,2
-        // p2 = 3,4
-        // p3 = 5,6
+        if(cs == YUV422)
+        {
             ctx.a1 = srca[0];
             ctx.b1 = srcb[0];
             ctx.c1 = srcb[1];
@@ -395,10 +373,8 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
 
             ctx.a4 = src_na[1];
         }
-        if(cs == YUV420){
-        // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
+        if(cs == YUV420)
+        {
             ctx.a1 = srca[0];
             ctx.b1 = srcb[0];
             ctx.c1 = srcb[1];
@@ -434,8 +410,6 @@ static inline void pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc, ui
 template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
 {
     if (pack == Interleaved){
-        // 1,[2,3]
-        // 4,[5,6]
         if(cs == YUV422){
             ctx.c2 = ctx.c1;
             ctx.b2 = ctx.b1;
@@ -445,11 +419,9 @@ template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
         }
 	}
 	else  if( pack == Planar)
-	{ // planar
-	    if(cs == YUV422){
-        // p1 = 1,2
-        // p2 = 3,4
-        // p3 = 5,6
+	{
+        if(cs == YUV422)
+        {
             ctx.b2 = ctx.b1;
             ctx.c2 = ctx.c1;
 
@@ -457,7 +429,8 @@ template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
             ctx.c4 = ctx.c3;
 
         }
-        if(cs == YUV420){
+        if(cs == YUV420)
+        {
             ctx.b2 = ctx.b1;
             ctx.c2 = ctx.c1;
 
@@ -470,20 +443,16 @@ template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
         }
 	}
 	else
-	{ // semiplanar
-		//p1 = 1_2
-        //p2 = 3_4
-        //p3 = 5_6
-        if(cs == YUV422){
+	{
+        if(cs == YUV422)
+        {
             ctx.b2 = ctx.b1;
             ctx.c2 = ctx.c1;
             ctx.b4 = ctx.b3;
             ctx.c4 = ctx.c3;
         }
-        if(cs == YUV420){
-        // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
+        if(cs == YUV420)
+        {
             ctx.b2 = ctx.b1;
             ctx.c2 = ctx.c1;
             ctx.b3 = ctx.b1;
@@ -500,9 +469,8 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
     uint8_t* dst_nb = dstb + meta.dst_stride[1];
     uint8_t* dst_nc = dstc + meta.dst_stride[2];
 
-    if (pack == Interleaved){
-        // 1,[2,3]
-        // 4,[5,6]
+    if (pack == Interleaved)
+    {
         if(cs == RGB || cs == YUV444){
             dsta[0] = ctx.a1;
             dsta[1] = ctx.b1;
@@ -542,10 +510,7 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
             dst_na[3] = ctx.c3;
         }
 	} else if(pack == Planar) { // planar
-		//p1 = 1_2
-        //p2 = 3_4
-        //p3 = 5_6
-        if(cs == RGB || cs == YUV444){
+		if(cs == RGB || cs == YUV444){
             dsta[0] = ctx.a1;
             dsta[1] = ctx.a2;
 
@@ -565,9 +530,6 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
             dst_nc[1] = ctx.c4;
         }
         if(cs == YUV422){
-        // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
             dsta[0] = ctx.a1;
             dsta[1] = ctx.a2;
 
@@ -581,9 +543,6 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
             dst_nc[0] = ctx.c3;
         }
         if(cs == YUV420){
-        // p1 = 1,2
-        // p2 = 3
-        // p3 = 5
             dsta[0] = ctx.a1;
             dsta[1] = ctx.a2;
             dst_na[0] = ctx.a3;
@@ -595,10 +554,7 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
         }
 	}
 	else { // semiplanar
-		//p1 = 1_2
-        //p2 = 3_4
-        //p3 = 5_6
-        if(cs == RGB || cs == YUV444){
+		if(cs == RGB || cs == YUV444){
             dsta[ 0 ] = ctx.a1;
             dsta[ 1 ] = ctx.a2;
 
@@ -677,7 +633,7 @@ template <Colorspace cs, Range range> inline void offset_yuv (int32_t& y, int32_
 {
 	if(range == FULL_RANGE)
         return;
-    // range == normal
+    //if range == normal
 	if (cs == YUV444 || cs == YUV422 || cs == YUV420) {
 		y += offset_y;
 		u += offset_u;
@@ -689,7 +645,7 @@ template <Colorspace cs, Range range> inline void offset_rgb (int32_t& r, int32_
 {
 	if(range == FULL_RANGE)
         return;
-    // range == normal
+    // if range == normal
 	if (cs == RGB || cs == A2R10G10B10) {
 		r += offset_r;
 		g += offset_g;
@@ -874,11 +830,7 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
     scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
     scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
     scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
-
-    char from_type = (from_cs == RGB || from_cs == A2R10G10B10)? (1 << 1) : (1 << 2);
-    char to_type = (to_cs == RGB || to_cs == A2R10G10B10)? (1 << 1) : (1 << 2);
-
-    //if (from_type != to_type)
+//  matrix multiple
     {
 
     #ifdef ENABLE_LOG
@@ -980,12 +932,11 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
     std::cout << "8*************************************" << std::endl;
 #endif
 
-    }
+}
 
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
 {
-	bool interleaved = (pack == Interleaved);
-	if (interleaved) {
+	if (Interleaved) {
 		ptr_a += stride[0] * 2;
 	} else {
         if(cs == RGB || cs == A2R10G10B10 || cs == YUV444)
@@ -1004,8 +955,8 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
         if(cs == YUV420)
         {
             // w
-            // w/2 (for 2 line)
-            // w/2 (for 2 line)
+            // w/2 (for 2 lines)
+            // w/2 (for 2 lines)
             ptr_a += stride[0] * 2;
             ptr_b += stride[1];
             ptr_c += stride[2];
@@ -1015,25 +966,17 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 
 template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs, Pack to_pack, Range to_range, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
-	int32_t transform_matrix[ 3*3 ];
-    write_transfrom_coeffs<from_cs, to_cs, st>(transform_matrix);
+	int32_t transform_matrix[ 3 * 3 ];
+    set_transfrom_coeffs<from_cs, to_cs, st>(transform_matrix);
 
     #ifdef ENABLE_LOG
-        // koeffs shifted right on 8
+        // matrix koeffs
         for(int r = 0 ; r < 3; ++r)
             std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
 
     #endif
 
     convert_range <from_cs, from_range, to_cs, to_range>(transform_matrix);
-
-    #ifdef ENABLE_LOG
-        // koeffs shifted right on 8
-        for(int r = 0 ; r < 3; ++r)
-            std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
-
-    #endif
-
 
 	uint8_t* src_a = meta.src_data[0];
 	uint8_t* src_b = meta.src_data[1];
@@ -1054,22 +997,33 @@ template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs
                                         src_b + shift_b,
                                         src_c + shift_c);
             unpack <from_pack, from_cs>(context);
-
+            #ifdef ENABLE_LOG
             std::cout  << "loaded" << std::endl;
-
+            #endif // ENABLE_LOG
             transform <from_cs, from_range, to_cs, to_range> (context, transform_matrix);
 
 
 			get_pos <to_pack, to_cs>(shift_a, shift_b, shift_c, x);
+
+			#ifdef ENABLE_LOG
 			std::cout << "converted \n";
+            #endif // ENABLE_LOG
+
 			pack_in<to_pack, to_cs > (context);
-			std::cout  << "packed\n";
+
+			#ifdef ENABLE_LOG
+			std::cout << "packed \n";
+            #endif // ENABLE_LOG
+
+
 			store<to_pack, to_cs > (meta, context,
 											 dst_a + shift_a,
 											 dst_b + shift_b,
 											 dst_c + shift_c);
+            #ifdef ENABLE_LOG
+			std::cout << "stored\n";
+            #endif // ENABLE_LOG
 
-            std::cout  << "stored\n";
 		}
 		next_row <from_cs, from_pack> (src_a, src_b, src_c, meta.src_stride);
 		next_row <to_cs, to_pack> (dst_a, dst_b, dst_c, meta.dst_stride);

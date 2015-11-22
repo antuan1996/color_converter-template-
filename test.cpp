@@ -1,4 +1,4 @@
-#define ENABLE_LOG
+//#define ENABLE_LOG
 
 
 #include <string>
@@ -122,6 +122,9 @@ int check( uint8_t* a, uint8_t* b, int width, int height ) {
 
 static int syntetic_test()
 {
+// p = planar
+// s = semiplanar
+// i = interleaved
      static uint8_t test_yuv422i_bt601[(8 * 2) * 2] =
 	{
 		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
@@ -440,7 +443,7 @@ static int syntetic_test()
 
     std::cout << "Same formats test\n";
 
-    std::cout << "YUV444 interleaved to planar";
+    std::cout << "YUV444 interleaved to planar\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -458,7 +461,7 @@ static int syntetic_test()
 	colorspace_convert<YUV444, Interleaved, NORM_RANGE, YUV444, Planar, NORM_RANGE, BT_601> (info);
 	print_yuv(result);
 
-    std::cout << "YUV444 interleaved to interleaved";
+    std::cout << "YUV444 interleaved to interleaved\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -480,7 +483,7 @@ static int syntetic_test()
     //*****************************************************************
 
     std::cout << "Packing test\n";
-    std::cout << "RGB24 interleaved to YUV422 interleaved";
+    std::cout << "RGB24 interleaved to YUV422 interleaved\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -499,7 +502,7 @@ static int syntetic_test()
 	print_yuv(result);
     //*****************************************************************
     std::cout << "Packing test\n";
-    std::cout << "RGB24 interleaved to YUV420 planar";
+    std::cout << "RGB24 interleaved to YUV420 planar\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -518,7 +521,7 @@ static int syntetic_test()
 	print_yuv(result);
     //*****************************************************************
     std::cout << "Semiplanar test\n";
-    std::cout << "YUV444 semiplanar to planar";
+    std::cout << "YUV444 semiplanar to planar\n";
     info.src_stride[0] = 8;
     info.src_stride[1] = 8 * 2;
     info.src_stride[2] = 0;
@@ -539,7 +542,7 @@ static int syntetic_test()
 	colorspace_convert<YUV444, SemiPlanar, NORM_RANGE, YUV444, Planar, NORM_RANGE, BT_601> (info);
 	print_yuv(result);
     //*****************************************************************
-    std::cout << "YUV444 planar to semiplanar";
+    std::cout << "YUV444 planar to semiplanar\n";
     info.src_stride[0] = 8;
     info.src_stride[1] = 8;
     info.src_stride[2] = 8;

@@ -482,6 +482,25 @@ static int syntetic_test()
 	colorspace_convert<YUV444, Interleaved, NORM_RANGE, YUV444, Planar, NORM_RANGE, BT_601> (info);
 	print_yuv(result);
 
+    std::cout << "YUV444 interleaved to planar FULL_RANGE\n";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 8;
+    info.dst_stride[2] = 8;
+
+	info.src_data[0] = test_yuv444i_bt601;
+	info.dst_data[0] = result;
+	info.dst_data[1] = result +  8 * 2;
+	info.dst_data[2] = result +  8 * 2 + 8 * 2;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<YUV444, Interleaved, NORM_RANGE, YUV444, Planar, FULL_RANGE, BT_601> (info);
+	print_yuv(result);
+
+
     std::cout << "YUV444 interleaved to interleaved\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;

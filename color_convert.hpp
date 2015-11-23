@@ -631,10 +631,14 @@ template <class T> inline T round_shift(T val, const size_t n)
 
 template <Colorspace cs, Range range> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
 {
-	if(range == FULL_RANGE)
-        return;
-    //if range == normal
-	if (cs == YUV444 || cs == YUV422 || cs == YUV420) {
+    if(!(cs == YUV444 || cs == YUV422 || cs == YUV420))
+        return ;
+
+//	if(range == FULL_RANGE )
+//        return;
+
+//if range == normal
+    {
 		y += offset_y;
 		u += offset_u;
 		v += offset_v;
@@ -665,15 +669,15 @@ template <Colorspace cs, Range range> static inline void clip_result (int32_t& v
             val_a = clip(val_a, 0, 255 << (8 + extra_shift));
             val_b = clip(val_b, 0, 255 << (8 + extra_shift));
             val_c = clip(val_c, 0, 255 << (8 + extra_shift));
-  
+
         }
         else
         {
               val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
               val_b = clip(val_b, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
               val_c = clip(val_c, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-   
-        } 
+
+        }
     }
     if( cs == A2R10G10B10)
     {
@@ -693,12 +697,12 @@ template <Colorspace cs, Range range> static inline void clip_result (int32_t& v
             val_a = clip(val_a, 0, 255 << (8 + extra_shift));
             val_b = clip(val_b, 0, 255 << (8 + extra_shift));
             val_c = clip(val_c, 0, 255 << (8 + extra_shift));
-        
+
         }
-        
-            
+
+
     }
-    
+
     //puts("after");
     //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
 
@@ -872,11 +876,13 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         offset_rgb <from_cs, from_range> (ctx.a3, ctx.b3, ctx.c3, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
         offset_rgb <from_cs, from_range> (ctx.a4, ctx.b4, ctx.c4, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
 
-        offset_yuv <from_cs, from_range> (ctx.a1, ctx.b1, ctx.c1, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from_cs, from_range> (ctx.a2, ctx.b2, ctx.c2, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from_cs, from_range> (ctx.a3, ctx.b3, ctx.c3, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-        offset_yuv <from_cs, from_range> (ctx.a4, ctx.b4, ctx.c4, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-
+        if(from_range == NORM_RANGE )
+        {
+            offset_yuv <from_cs, from_range> (ctx.a1, ctx.b1, ctx.c1, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
+            offset_yuv <from_cs, from_range> (ctx.a2, ctx.b2, ctx.c2, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
+            offset_yuv <from_cs, from_range> (ctx.a3, ctx.b3, ctx.c3, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
+            offset_yuv <from_cs, from_range> (ctx.a4, ctx.b4, ctx.c4, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
+        }
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
         std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
@@ -916,11 +922,22 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         offset_rgb <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
         offset_rgb <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
 
+        if(to_range == NORM_RANGE)
+        {
+            offset_yuv <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        }
+        else
+        {
+            // before it, U and V in range [-112, 112]
+            offset_yuv <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+            offset_yuv <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
+        }
 
-        offset_yuv <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        offset_yuv <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
 
 
 

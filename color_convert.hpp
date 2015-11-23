@@ -653,22 +653,52 @@ template <Colorspace cs, Range range> inline void offset_rgb (int32_t& r, int32_
 	}
 }
 
-template <Colorspace cs> static inline void clip_result (int32_t& val_a, int32_t& val_b, int32_t& val_c)
+template <Colorspace cs, Range range> static inline void clip_result (int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
     //puts("before");
     //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
     uint32_t extra_shift = (cs == A2R10G10B10)? 2 : 0;
-    if(cs == RGB || cs == A2R10G10B10){
-        val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-        val_b = clip(val_b, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-        val_c = clip(val_c, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
+    if(cs == RGB)
+    {
+        if(range == FULL_RANGE)
+        {
+            val_a = clip(val_a, 0, 255 << (8 + extra_shift));
+            val_b = clip(val_b, 0, 255 << (8 + extra_shift));
+            val_c = clip(val_c, 0, 255 << (8 + extra_shift));
+  
+        }
+        else
+        {
+              val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
+              val_b = clip(val_b, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
+              val_c = clip(val_c, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
+   
+        } 
     }
-    else
-    if(cs == YUV444 || cs == YUV422 || cs == YUV420 ){
-        val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-        val_b = clip(val_b, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
-        val_c = clip(val_c, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
+    if( cs == A2R10G10B10)
+    {
+        val_a = clip(val_a, 0, 255 << (8 + extra_shift));
+        val_b = clip(val_b, 0, 255 << (8 + extra_shift));
+        val_c = clip(val_c, 0, 255 << (8 + extra_shift));
     }
+    else if(cs == YUV444 || cs == YUV422 || cs == YUV420 )
+    {
+        if(range == NORM_RANGE)
+        {
+            val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
+            val_b = clip(val_b, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
+            val_c = clip(val_c, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
+        } else
+        {
+            val_a = clip(val_a, 0, 255 << (8 + extra_shift));
+            val_b = clip(val_b, 0, 255 << (8 + extra_shift));
+            val_c = clip(val_c, 0, 255 << (8 + extra_shift));
+        
+        }
+        
+            
+    }
+    
     //puts("after");
     //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
 
@@ -901,10 +931,10 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
         std::cout << "5||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
-        clip_result <to_cs> (ctx.a1, ctx.b1, ctx.c1);
-        clip_result <to_cs> (ctx.a2, ctx.b2, ctx.c2);
-        clip_result <to_cs> (ctx.a3, ctx.b3, ctx.c3);
-        clip_result <to_cs> (ctx.a4, ctx.b4, ctx.c4);
+        clip_result <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1);
+        clip_result <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2);
+        clip_result <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3);
+        clip_result <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4);
 
     #ifdef ENABLE_LOG
         std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;

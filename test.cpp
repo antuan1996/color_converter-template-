@@ -400,7 +400,7 @@ static int syntetic_test()
 	print_yuv(result);
 
 //*****************************************************************
-	std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved\n";
+	std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved( Norm Range)\n";
 
     info.src_stride[0] = 8 * 4;
     info.src_stride[1] = 0;
@@ -420,6 +420,27 @@ static int syntetic_test()
 	print_rgb(result);
 
     //*****************************************************************
+	std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved( Full Range)\n";
+
+    info.src_stride[0] = 8 * 4;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8 * 3;
+    info.dst_stride[1] = 0;
+    info.dst_stride[2] = 0;
+
+	info.src_data[0] = test_A2R10G10B10_bt601;
+	info.dst_data[0] = result;
+	info.dst_data[1] = nullptr;
+	info.dst_data[2] = nullptr;
+
+	memset(result, 0xff, sizeof(result));
+	colorspace_convert<A2R10G10B10, Interleaved, FULL_RANGE, RGB, Interleaved, FULL_RANGE, BT_601> (info);
+	print_rgb(result);
+
+    //*****************************************************************
+
 	std::cout << "A2R10G10B10 interleaved to YUV444 planar\n";
 
     info.src_stride[0] = 8 * 4;

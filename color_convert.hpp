@@ -826,10 +826,6 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
     uint32_t extra_shift = (to_cs == A2R10G10B10)? 2 : 0;
     //offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
 
-    scale<from_cs, to_cs>(ctx.a1, ctx.b1, ctx.c1);
-    scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
-    scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
-    scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
 //  matrix multiple
     {
 
@@ -858,6 +854,12 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
         std::cout << "3||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
+
+        scale<from_cs, to_cs>(ctx.a1, ctx.b1, ctx.c1);
+        scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
+        scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
+        scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
+
 
     #ifdef ENABLE_LOG
         // koeffs shifted right on 8
@@ -924,6 +926,7 @@ template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range
         std::cout << "7||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
     #endif
     } // if(from_cs_type != to_type)
+
 #ifdef ENABLE_LOG
     std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
     std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;

@@ -1,6 +1,16 @@
 #ifndef COLOR_CONVERT
 #define COLOR_CONVERT
 
+#define IS_RGB(cs) (cs == RGB || cs == A2R10G10B10)
+#define IS_YUV(cs) (cs == YUV444 || cs == YUV422 || cs == YUV420)
+#define IS_8BIT(cs) (cs == RGB || cs == YUV444 || cs == YUV420 || cs == YUV422)
+#define IS_10BIT(cs) (cs == A2R10G10B10)
+
+#define SHIFT_LEFT 1
+#define SHIFT_RIGHT 0
+
+
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -21,11 +31,6 @@ enum Colorspace
 	RGB,
 	A2R10G10B10
 };
-enum Range
-{
-    FULL_RANGE,
-    NORM_RANGE
-};
 enum Standard
 {
 	BT_601,
@@ -41,8 +46,8 @@ enum Pack
 };
 
 /*
- * 1 2
- * 3 4
+ * p1 p2
+ * p3 p4
  */
 struct Context
 {
@@ -180,69 +185,59 @@ template<Pack pack, Colorspace cs> inline void get_pos(size_t& posa, size_t& pos
     //assert(0);
 }
 
-template <Colorspace from, Colorspace to, Standard st> void set_transfrom_coeffs(int32_t* res_matrix)
+template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs(int32_t* res_matrix)
 {
    const int32_t* matrix = e_matrix;
 	if (st == BT_601) {
-        if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422 || to == YUV420) ) {
+        if ( IS_RGB( from ) && IS_YUV( to ) ) {
 			matrix =  k_bt601_RGB_to_YUV;
 		}
         else
-		if ((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10) ) {
+        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
 			matrix =  k_bt601_YUV_to_RGB;
 		}
 	}
     else
     if (st == BT_709) {
-		if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422  || to == YUV420 ) ) {
-			matrix =  k_bt709_RGB_to_YUV;
-		}
+        if ( IS_RGB( from ) && IS_YUV( to ) ) {
+            matrix =  k_bt709_RGB_to_YUV;
+        }
         else
-		if ((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10)) {
-			matrix = k_bt709_YUV_to_RGB;
-		}
-		// TODO: Usupported transform
-		//else
-        //assert(0);
+        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
+            matrix =  k_bt709_YUV_to_RGB;
+        }
 	}
     else
     if (st == BT_2020) {
-        if ((from == RGB || from == A2R10G10B10) && (to == YUV444 || to == YUV422  || to == YUV420) ) {
-			matrix = k_bt2020_RGB_to_YUV;
-		}
-		if((from == YUV444 || from == YUV422 || from == YUV420) && (to == RGB || to == A2R10G10B10)) {
-			matrix =  k_bt2020_YUV_to_RGB;
-		}
-		// TODO: Usupported transform
-		//assert(0);
-	}
-	// copying from const to mutable
+        if ( IS_RGB( from ) && IS_YUV( to ) ) {
+            matrix =  k_bt2020_RGB_to_YUV;
+        }
+        else
+        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
+            matrix =  k_bt2020_YUV_to_RGB;
+        }
+    }
+    // copying from const to mutable
     for(int r=0; r < 3; ++r)
     {
-        res_matrix[r*3 + 0] = matrix[ r*3 + 0 ];
-        res_matrix[r*3 + 1] = matrix[ r*3 + 1 ];
-        res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
+       res_matrix[r*3 + 0] = matrix[ r*3 + 0 ];
+       res_matrix[r*3 + 1] = matrix[ r*3 + 1 ];
+       res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
     }
 }
-static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& valc, const uint8_t* buf)
+static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& valc, const uint32_t buf)
 {
             // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
+            //TO DO define R_FROM_A2R10G10 e.t.c
 
-            int32_t val;
-            val = buf[1] & (0xF);
-            val <<= 6;
-            val |= (buf[0] >> 2) & (0x3F);
-            vala = val;
+            // red
+            vala = (( (buf >> 16) & (0xF)) << 6 ) |  ((buf >> 26) & (0x3F));
 
-            val = ( buf[2] ) & (0x3F);
-            val <<= 4;
-            val |= (buf[1] >> 4) & (0xF);
-            valb = val;
+            //green
+            valb = (( (buf >> 8) & (0x3F) )<< 4) | ((buf >> 20) & (0xF));
 
-            val =  buf[3] ;
-            val <<= 2;
-            val |= ( buf[2] >> 6) & (0xF);
-            valc = val;
+            //blue
+            valc =  ((buf & 0xFF) << 2) | (( buf >> 14) & (0x3));
 
 }
 template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx,  const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
@@ -285,10 +280,17 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
         }
         if(cs == A2R10G10B10)
         {
-            unpack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1, srca);
-            unpack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, srca + 4);
-            unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, src_na);
-            unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, src_na + 4);
+            // Optimize ???
+
+            ctx.c1 = (*(srca) << 24) | (*(srca+1) << 16) | (*(srca+2) << 8) | (*(srca + 3)) ;
+            ctx.c2 = (*(srca+4) << 24) | (*(srca+5) << 16) | (*(srca+6) << 8) | (*(srca + 7)) ;
+            ctx.c3 = (*(src_na) << 24) | (*(src_na+1) << 16) | (*(src_na+2) << 8) | (*(src_na + 3)) ;
+            ctx.c4 = (*(src_na+4) << 24) | (*(src_na + 5) << 16) | (*(src_na + 6) << 8) | (*(src_na + 7)) ;
+            /*
+            std::memcpy( &(ctx.c2), srca + 4, 4);
+            std::memcpy( &(ctx.c3), src_na, 4);
+            std::memcpy( &(ctx.c4), src_na + 4 , 4);
+            */
         }
 	}
 	else  if( pack == Planar)
@@ -388,24 +390,22 @@ template <Pack pack, Colorspace cs> inline void load(ConvertMeta& meta, Context&
 	}
 }
 
-static inline void pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc, uint8_t* buf)
+static inline uint32_t pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc)
 {
     // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
 
-    int8_t res[ 4 ];
-    res[0] = 3;
-    res[0] |= (vala & 0x3F) << 2;
+    int32_t res;
+    res = 3l << 24;
+    res |= (vala & 0x3F) << 26;
+    res |= ( (vala >> 6) & 0xF) << 16;
 
-    res[1] = (vala >> 6) & 0XF;
-    res[1] |= (valb & 0xF) << 4;
+    res |= (valb & 0xF) << 20;
+    res |= ( (valb >> 4) & 0X3F) << 8;
 
-    res[2] = (valb >> 4) & 0X3F;
-    res[2] |= (valc & 3) << 6;
+    res |= (valc & 0x3) << 14;
+    res |= (valc >> 2) & 0XFF;
 
-    res[3] = (valc >> 2) & 0XFF;
-
-    memcpy(buf, res, 4);
-
+    return res;
 }
 template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
 {
@@ -417,8 +417,15 @@ template <Pack pack, Colorspace cs> inline void unpack (Context &ctx)
             ctx.c4 = ctx.c3;
             ctx.b4 = ctx.b3;
         }
+        if(cs == A2R10G10B10)
+        {
+            unpack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1, ctx.c1);
+            unpack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, ctx.c2);
+            unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, ctx.c3);
+            unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, ctx.c4);
+        }
 	}
-	else  if( pack == Planar)
+    else if( pack == Planar)
 	{
         if(cs == YUV422)
         {
@@ -491,10 +498,10 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
         }
         if(cs == A2R10G10B10)
         {
-            pack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1, dsta);
-            pack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, dsta + 4);
-            pack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, dst_na);
-            pack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, dst_na + 4);
+            memcpy(dsta, &ctx.a1, 4);
+            memcpy(dsta + 4, &ctx.a2, 4);
+            memcpy(dst_na, &ctx.a3, 4);
+            memcpy(dst_na + 4, &ctx.a4, 4);
         }
         if(cs == YUV422){
             dsta[0] = ctx.a1;
@@ -608,14 +615,21 @@ template <Pack pack, Colorspace cs> inline void store(const ConvertMeta& meta, C
 template <Pack pack, Colorspace cs> inline void pack_in(Context &ctx)
 {
     if(cs == YUV422){
-            ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
-            ctx.c1 = ctx.c2 =  (ctx.c1 + ctx.c2) / 2;
-            ctx.b3 = ctx.b4 =  (ctx.b3 + ctx.b4) / 2;
-            ctx.c3 = ctx.c4 =  (ctx.c3 + ctx.c4) / 2;
+        ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
+        ctx.c1 = ctx.c2 =  (ctx.c1 + ctx.c2) / 2;
+        ctx.b3 = ctx.b4 =  (ctx.b3 + ctx.b4) / 2;
+        ctx.c3 = ctx.c4 =  (ctx.c3 + ctx.c4) / 2;
     }
     if(cs == YUV420){
-            ctx.b1 = (ctx.b1 + ctx.b2 + ctx.b3 + ctx.b4) / 4;
-            ctx.c1 = (ctx.c1 + ctx.c2 + ctx.c3 + ctx.c4) / 4;
+        ctx.b1 = (ctx.b1 + ctx.b2 + ctx.b3 + ctx.b4) / 4;
+        ctx.c1 = (ctx.c1 + ctx.c2 + ctx.c3 + ctx.c4) / 4;
+    }
+    if(cs == A2R10G10B10)
+    {
+        ctx.a1 = pack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1);
+        ctx.a2 = pack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2);
+        ctx.a3 = pack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3);
+
     }
 }
 
@@ -628,123 +642,18 @@ template <class T> inline T round_shift(T val, const size_t n)
     return (val + (1 << (n - 1))) >> n;
     //return val >> n;
 }
-
-template <Colorspace cs, Range range> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v, int32_t offset_y, int32_t offset_u, int32_t offset_v)
-{
-    if(!(cs == YUV444 || cs == YUV422 || cs == YUV420))
-        return ;
-
-//	if(range == FULL_RANGE )
-//        return;
-
-//if range == normal
-    {
-		y += offset_y;
-		u += offset_u;
-		v += offset_v;
-	}
-}
-
-template <Colorspace cs, Range range> inline void offset_rgb (int32_t& r, int32_t& g, int32_t& b, int32_t offset_r, int32_t offset_g, int32_t offset_b)
-{
-	if(range == FULL_RANGE)
-        return;
-    // if range == normal
-	if (cs == RGB || cs == A2R10G10B10) {
-		r += offset_r;
-		g += offset_g;
-		b += offset_b;
-	}
-}
-
-template <Colorspace cs, Range range> static inline void clip_result (int32_t& val_a, int32_t& val_b, int32_t& val_c)
-{
-    //puts("before");
-    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
-    uint32_t extra_shift = (cs == A2R10G10B10)? 2 : 0;
-    if(cs == RGB)
-    {
-        if(range == FULL_RANGE)
-        {
-            val_a = clip(val_a, 0, 255 << (8 + extra_shift));
-            val_b = clip(val_b, 0, 255 << (8 + extra_shift));
-            val_c = clip(val_c, 0, 255 << (8 + extra_shift));
-
-        }
-        else
-        {
-              val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-              val_b = clip(val_b, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-              val_c = clip(val_c, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-
-        }
-    }
-    if( cs == A2R10G10B10)
-    {
-        val_a = clip(val_a, 0, 255 << (8 + extra_shift));
-        val_b = clip(val_b, 0, 255 << (8 + extra_shift));
-        val_c = clip(val_c, 0, 255 << (8 + extra_shift));
-    }
-    else if(cs == YUV444 || cs == YUV422 || cs == YUV420 )
-    {
-        if(range == NORM_RANGE)
-        {
-            val_a = clip(val_a, 16 << (8 + extra_shift), 235 << (8 + extra_shift));
-            val_b = clip(val_b, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
-            val_c = clip(val_c, 16 << (8 + extra_shift), 240 << (8 + extra_shift));
-        } else
-        {
-            val_a = clip(val_a, 0, 255 << (8 + extra_shift));
-            val_b = clip(val_b, 0, 255 << (8 + extra_shift));
-            val_c = clip(val_c, 0, 255 << (8 + extra_shift));
-
-        }
-
-
-    }
-
-    //puts("after");
-    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
-
-}
-
-/*
- * | a |   |                  |   | a'|
- * | b | * | transform_matrix | = | b'|
- * | c |   |                  |   | c'|
- */
-static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int32_t transform_matrix[3 * 3])
-{
-	int32_t tmp1 = transform_matrix[0*3 + 0] * a + transform_matrix[0*3 + 1] * b + transform_matrix[0*3 + 2] * c;
-	int32_t tmp2 = transform_matrix[1*3 + 0] * a + transform_matrix[1*3 + 1] * b + transform_matrix[1*3 + 2] * c;
-	int32_t tmp3 = transform_matrix[2*3 + 0] * a + transform_matrix[2*3 + 1] * b + transform_matrix[2*3 + 2] * c;
-
-    a = tmp1;
-	b = tmp2;
-	c = tmp3;
-}
-inline void complex_shift( int32_t& a, int32_t& b, int32_t& c, int n){
-    a = round_shift(a, n);
-	b = round_shift(b, n);
-	c = round_shift(c, n);
-}
-
 template <Colorspace from, Colorspace to> inline void scale(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
-    bool from8bit =  (from == RGB || from == YUV444 || from == YUV420 || from == YUV422);
-    bool from10bit = (from == A2R10G10B10);
-    bool to8bit =  (to == RGB || to == YUV444 || to == YUV420 || to == YUV422);
-    bool to10bit = (to == A2R10G10B10);
-    if( (from8bit && to8bit) || (from10bit && to10bit) )
+    if( (IS_8BIT(from) &&(IS_8BIT(to))) || (IS_10BIT(from) && IS_10BIT(to)) )
         return;
-    if(from8bit && to10bit)
+    if(IS_8BIT(from) && IS_10BIT(to))
     {
         val_a <<= 2;
         val_b <<= 2;
         val_c <<= 2;
         return;
     }
-    if(from10bit && to8bit)
+    if(IS_10BIT(from) && IS_8BIT(to))
     {
         val_a >>= 2;
         val_b >>= 2;
@@ -754,234 +663,155 @@ template <Colorspace from, Colorspace to> inline void scale(int32_t& val_a, int3
     assert(0);
     //TODO unsupported formats
 }
-
-template <Colorspace cs_from, Range from_range, Colorspace cs_to,  Range to_range> inline void convert_range(int32_t* matrix)
+template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v,bool is_left)
 {
-    if(from_range == FULL_RANGE)
+    if(IS_YUV( cs ))
     {
-        if(cs_from == RGB)
+        int32_t offset_y, offset_u, offset_v;
+        //offset left
+        if(is_left)
         {
-            for(int r = 0 ; r<3; ++r)
-            {
-                matrix[r * 3 + 0] *= 219;
-                matrix[r * 3 + 1] *= 219;
-                matrix[r * 3 + 2] *= 219;
+            offset_y = -16;
+            offset_u = -128;
+            offset_v = -128;
 
-                matrix[r * 3 + 0] >>= 8;
-                matrix[r * 3 + 1] >>= 8;
-                matrix[r * 3 + 2] >>= 8;
-            }
         }
-        if( cs_from == YUV444 || cs_from == YUV422 || cs_from == YUV420)
+        else
         {
-            for(int r = 0 ; r<3; ++r)
-            {
-                matrix[r * 3 + 0] *= 219;
-                matrix[r * 3 + 1] *= 224;
-                matrix[r * 3 + 2] *= 224;
+            // offset right
+            // y+= 16 - result of range manipulation
+            offset_y = 16;
+            offset_u = 128;
+            offset_v = 128;
 
-                matrix[r * 3 + 0] >>= 8;
-                matrix[r * 3 + 1] >>= 8;
-                matrix[r * 3 + 2] >>= 8;
-            }
         }
-        if(cs_from == A2R10G10B10 )
-        {
-            for(int r = 0; r < 3; ++r)
-            {
-                matrix[r * 3 + 0] *= 219 << 2;
-                matrix[r * 3 + 1] *= 219 << 2;
-                matrix[r * 3 + 2] *= 219 << 2;
-
-                matrix[r * 3 + 0] >>= 10;
-                matrix[r * 3 + 1] >>= 10;
-                matrix[r * 3 + 2] >>= 10;
-            }
-        }
-    }// from_range == FULL_RANGE
-
-    if( to_range == FULL_RANGE )
-    {
-        if(cs_to == RGB)
-        {
-            for(int r = 0 ; r<3; ++r)
-            {
-                matrix[r * 3 + 0] <<= 8;
-                matrix[r * 3 + 1] <<= 8;
-                matrix[r * 3 + 2] <<= 8;
-
-                matrix[r * 3 + 0] /= 219;
-                matrix[r * 3 + 1] /= 219;
-                matrix[r * 3 + 2] /= 219;
-            }
-        }
-        if( cs_to == YUV444 || cs_to == YUV422 || cs_to == YUV420 )
-        {
-            for(int r = 0; r < 3; ++r)
-            {
-                matrix[r * 3 + 0] <<= 8;
-                matrix[r * 3 + 1] <<= 8;
-                matrix[r * 3 + 2] <<= 8;
-
-                matrix[r * 3 + 0] /= 219;
-                matrix[r * 3 + 1] /= 224;
-                matrix[r * 3 + 2] /= 224;
-            }
-        }
-        if(cs_to == A2R10G10B10 )
-        {
-            for(int r = 0; r < 3; ++r)
-            {
-                matrix[r * 3 + 0] <<= 10;
-                matrix[r * 3 + 1] <<= 10;
-                matrix[r * 3 + 2] <<= 10;
-
-                matrix[r * 3 + 0] /= 219 << 2;
-                matrix[r * 3 + 1] /= 219 << 2;
-                matrix[r * 3 + 2] /= 219 << 2;
-            }
-        }
-    }//cs_to == FULL_RANGE
-
-    // TODO Unsupported formats
-    //assert(0);
+        scale < YUV444, cs > (offset_y, offset_u, offset_v);
+        y += offset_y;
+		u += offset_u;
+		v += offset_v;
+    }
 }
 
-template <Colorspace from_cs, Range from_range, Colorspace to_cs, Range to_range > inline void transform (Context &ctx, const int32_t transform_matrix[3 * 3])
+template <Colorspace cs> static inline void clip_result (int32_t& val_a, int32_t& val_b, int32_t& val_c)
+{
+    //puts("before");
+    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
+    if(cs == RGB)
+    {
+        val_a = clip(val_a, 0, 255);
+        val_b = clip(val_b, 0, 255);
+        val_c = clip(val_c, 0, 255);
+    }
+    if( cs == A2R10G10B10)
+    {
+        val_a = clip(val_a, 0, 255 << 2);
+        val_b = clip(val_b, 0, 255 << 2);
+        val_c = clip(val_c, 0, 255 << 2);
+    }
+    else if(cs == YUV444 || cs == YUV422 || cs == YUV420 )
+    {
+        val_a = clip(val_a, 16, 235);
+        val_b = clip(val_b, 16, 240);
+        val_c = clip(val_c, 16, 240);
+        //puts("after");
+        //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
+    }
+}
+/*
+ * | a |   |                  |   | a'|
+ * | b | * | transform_matrix | = | b'|
+ * | c |   |                  |   | c'|
+ */
+static inline void mat_mul(int32_t &a, int32_t &b, int32_t &c, const int32_t* transform_matrix)
 {
 
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "1||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-#endif
-    uint32_t extra_shift = (to_cs == A2R10G10B10)? 2 : 0;
-    //offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+    int32_t tmp1 = transform_matrix[0*3 + 0] * a + transform_matrix[0*3 + 1] * b + transform_matrix[0*3 + 2] * c;
+    int32_t tmp2 = transform_matrix[1*3 + 0] * a + transform_matrix[1*3 + 1] * b + transform_matrix[1*3 + 2] * c;
+    int32_t tmp3 = transform_matrix[2*3 + 0] * a + transform_matrix[2*3 + 1] * b + transform_matrix[2*3 + 2] * c;
 
-//  matrix multiple
-    {
-
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "2||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
-
-        offset_rgb <from_cs, from_range> (ctx.a1, ctx.b1, ctx.c1, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
-        offset_rgb <from_cs, from_range> (ctx.a2, ctx.b2, ctx.c2, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
-        offset_rgb <from_cs, from_range> (ctx.a3, ctx.b3, ctx.c3, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
-        offset_rgb <from_cs, from_range> (ctx.a4, ctx.b4, ctx.c4, -16 << extra_shift, -16 << extra_shift, -16 << extra_shift);
-
-        if(from_range == NORM_RANGE )
-        {
-            offset_yuv <from_cs, from_range> (ctx.a1, ctx.b1, ctx.c1, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-            offset_yuv <from_cs, from_range> (ctx.a2, ctx.b2, ctx.c2, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-            offset_yuv <from_cs, from_range> (ctx.a3, ctx.b3, ctx.c3, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-            offset_yuv <from_cs, from_range> (ctx.a4, ctx.b4, ctx.c4, -16 << extra_shift, -128 << extra_shift, -128 << extra_shift);
-        }
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "3||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
-
-        scale<from_cs, to_cs>(ctx.a1, ctx.b1, ctx.c1);
-        scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
-        scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
-        scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
+    a = tmp1;
+	b = tmp2;
+	c = tmp3;
+}
+inline void round_shift( int32_t& a, int32_t& b, int32_t& c, int n){
+    a = (a + (1 << (n - 1))) >> n;
+    b = (b + (1 << (n - 1))) >> n;
+    c = (c + (1 << (n - 1))) >> n;
+}
 
 
-    #ifdef ENABLE_LOG
-        // koeffs shifted right on 8
+
+template <Colorspace cs_from, Colorspace cs_to> inline void convert_range(int32_t* matrix)
+{
+    if(IS_RGB(cs_from) && IS_YUV(cs_to))
         for(int r = 0 ; r < 3; ++r)
-            std::cout << transform_matrix[r*3 + 0] << " " << transform_matrix[r*3 + 1] << " " << transform_matrix[r*3 + 2] << "\n";
-    #endif
+        {
+            matrix[r * 3 + 0] *= 219;
+            matrix[r * 3 + 1] *= 219;
+            matrix[r * 3 + 2] *= 219;
+
+            matrix[r * 3 + 0] >>= 8;
+            matrix[r * 3 + 1] >>= 8;
+            matrix[r * 3 + 2] >>= 8;
+        }
+    if(IS_YUV(cs_from) && IS_RGB(cs_to))
+        for(int r = 0 ; r<3; ++r)
+        {
+            matrix[r * 3 + 0] <<= 8;
+            matrix[r * 3 + 1] <<= 8;
+            matrix[r * 3 + 2] <<= 8;
+
+            matrix[r * 3 + 0] /= 219;
+            matrix[r * 3 + 1] /= 219;
+            matrix[r * 3 + 2] /= 219;
+        }
+}
+
+template <Colorspace from_cs, Colorspace to_cs> inline void transform (Context &ctx, int32_t const * transform_matrix)
+{
+#ifdef ENABLE_LOG
+    std::cout << "matrix transform inside\n";
+    for(int r = 0 ; r < 3; ++r)
+    {
+        std::cout << transform_matrix[ r * 3 + 0 ] << ' ' << transform_matrix[ r * 3 + 1 ] << " " <<transform_matrix[ r * 3 + 2 ] << "\n";
+    }
+#endif
+
+    scale<from_cs, to_cs>(ctx.a1, ctx.b1, ctx.c1);
+    scale<from_cs, to_cs>(ctx.a2, ctx.b2, ctx.c2);
+    scale<from_cs, to_cs>(ctx.a3, ctx.b3, ctx.c3);
+    scale<from_cs, to_cs>(ctx.a4, ctx.b4, ctx.c4);
+
+
+    //  matrix multiple
+    if( (IS_RGB(from_cs) && IS_YUV(to_cs)) || (IS_YUV(from_cs) && IS_RGB(to_cs)))
+    {
+        offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_LEFT);
+        offset_yuv <from_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_LEFT);
+        offset_yuv <from_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_LEFT);
+        offset_yuv <from_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_LEFT);
 
         mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
         mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
         mat_mul(ctx.a3, ctx.b3, ctx.c3, transform_matrix);
         mat_mul(ctx.a4, ctx.b4, ctx.c4, transform_matrix);
 
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "4||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
-        //offset_yuv <to> (ctx.a1, ctx.b1, ctx.c1, 16, 128, 128); // Y offset is n't necessary in reference
+        round_shift(ctx.a1, ctx.b1, ctx.c1, 8);
+        round_shift(ctx.a2, ctx.b2, ctx.c2, 8);
+        round_shift(ctx.a3, ctx.b3, ctx.c3, 8);
+        round_shift(ctx.a4, ctx.b4, ctx.c4, 8);
 
-        offset_rgb <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
-        offset_rgb <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
-        offset_rgb <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
-        offset_rgb <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 16 << (8 + extra_shift), 16 << (8 + extra_shift), 16 << (8 + extra_shift));
+        offset_yuv <to_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_RIGHT);
+        offset_yuv <to_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_RIGHT);
+        offset_yuv <to_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_RIGHT);
+        offset_yuv <to_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_RIGHT);
 
-        if(to_range == NORM_RANGE)
-        {
-            offset_yuv <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 16 << (8 + extra_shift), 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        }
-        else
-        {
-            // before it, U and V in range [-112, 112]
-            offset_yuv <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-            offset_yuv <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4, 0, 128 << (8 + extra_shift), 128 << (8 + extra_shift));
-        }
+        clip_result <to_cs> (ctx.a1, ctx.b1, ctx.c1);
+        clip_result <to_cs> (ctx.a2, ctx.b2, ctx.c2);
+        clip_result <to_cs> (ctx.a3, ctx.b3, ctx.c3);
+        clip_result <to_cs> (ctx.a4, ctx.b4, ctx.c4);
 
-
-
-
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "5||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
-        clip_result <to_cs, to_range> (ctx.a1, ctx.b1, ctx.c1);
-        clip_result <to_cs, to_range> (ctx.a2, ctx.b2, ctx.c2);
-        clip_result <to_cs, to_range> (ctx.a3, ctx.b3, ctx.c3);
-        clip_result <to_cs, to_range> (ctx.a4, ctx.b4, ctx.c4);
-
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "6||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
-        complex_shift(ctx.a1, ctx.b1, ctx.c1, 8);
-        complex_shift(ctx.a2, ctx.b2, ctx.c2, 8);
-        complex_shift(ctx.a3, ctx.b3, ctx.c3, 8);
-        complex_shift(ctx.a4, ctx.b4, ctx.c4, 8);
-
-    #ifdef ENABLE_LOG
-        std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-        std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-        std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-        std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-        std::cout << "7||||||||||||||||||||||||||||||||||||||||||||||" << std::endl;
-    #endif
     } // if(from_cs_type != to_type)
-
-#ifdef ENABLE_LOG
-    std::cout << ctx.a1 << " "<< ctx.b1 << " "<< ctx.c1 << std::endl;
-    std::cout << ctx.a2 << " "<< ctx.b2 << " "<< ctx.c2 << std::endl;
-    std::cout << ctx.a3 << " "<< ctx.b3 << " "<< ctx.c3 << std::endl;
-    std::cout << ctx.a4 << " "<< ctx.b4 << " "<< ctx.c4 << std::endl;
-    std::cout << "8*************************************" << std::endl;
-#endif
-
 }
 
 template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
@@ -1014,10 +844,10 @@ template <Colorspace cs , Pack pack> inline void next_row (uint8_t* &ptr_a, uint
 	}
 }
 
-template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs, Pack to_pack, Range to_range, Standard st> void colorspace_convert(ConvertMeta& meta)
+template<Colorspace from_cs , Pack from_pack, Colorspace to_cs, Pack to_pack, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
 	int32_t transform_matrix[ 3 * 3 ];
-    set_transfrom_coeffs<from_cs, to_cs, st>(transform_matrix);
+    set_transform_coeffs<from_cs, to_cs, st>(transform_matrix);
 
     #ifdef ENABLE_LOG
         // matrix koeffs
@@ -1026,7 +856,13 @@ template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs
 
     #endif
 
-    convert_range <from_cs, from_range, to_cs, to_range>(transform_matrix);
+    convert_range <from_cs, to_cs>(transform_matrix);
+
+    std::cout << "Matrix of convertation\n";
+    for(int r = 0; r < 3; ++r)
+    {
+        std::cout << transform_matrix[r * 3 + 0] << " " << transform_matrix[r * 3 + 1] << " " << transform_matrix[r * 3 + 2] << "\n";
+    }
 
 	uint8_t* src_a = meta.src_data[0];
 	uint8_t* src_b = meta.src_data[1];
@@ -1048,21 +884,20 @@ template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs
                                         src_c + shift_c);
             unpack <from_pack, from_cs>(context);
             #ifdef ENABLE_LOG
-            std::cout  << "loaded" << std::endl;
+                std::cout  << "loaded" << std::endl;
             #endif // ENABLE_LOG
-            transform <from_cs, from_range, to_cs, to_range> (context, transform_matrix);
-
+            transform <from_cs, to_cs> (context, transform_matrix);
 
 			get_pos <to_pack, to_cs>(shift_a, shift_b, shift_c, x);
 
 			#ifdef ENABLE_LOG
-			std::cout << "converted \n";
+                std::cout << "converted \n";
             #endif // ENABLE_LOG
 
 			pack_in<to_pack, to_cs > (context);
 
 			#ifdef ENABLE_LOG
-			std::cout << "packed \n";
+                std::cout << "packed \n";
             #endif // ENABLE_LOG
 
 
@@ -1071,7 +906,7 @@ template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs
 											 dst_b + shift_b,
 											 dst_c + shift_c);
             #ifdef ENABLE_LOG
-			std::cout << "stored\n";
+                std::cout << "stored\n";
             #endif // ENABLE_LOG
 
 		}
@@ -1079,6 +914,7 @@ template<Colorspace from_cs , Pack from_pack, Range from_range, Colorspace to_cs
 		next_row <to_cs, to_pack> (dst_a, dst_b, dst_c, meta.dst_stride);
 	}
 }
+
 } // namespace ColorspaceConverter;
 
 #endif

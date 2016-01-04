@@ -61,7 +61,7 @@ static int fifo_test(int argc, char *argv[])
 	in.close();
 
     std::cout << "I'm ready" << std::endl;
-    colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<YUV444, RGB24, BT_601> (info);
 
     std::cout << "Writng results" << std::endl;
 
@@ -247,7 +247,6 @@ static int syntetic_test()
 	info.width = 8;
 	info.height = 2;
     size_t stride = 8;
-    /*
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -265,21 +264,22 @@ static int syntetic_test()
 
 	std::cout << "BT601-------------------------\n";
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert< RGB, Interleaved, YUV444, Planar, BT_601> (info);
+    colorspace_convert< RGB24, YUV444, BT_601> (info);
 	print_yuv(result);
 
 	std::cout << "BT709-------------------------\n";
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert< RGB, Interleaved, YUV444, Planar, BT_709> (info);
+    colorspace_convert< RGB24, YUV444, BT_709> (info);
     print_yuv(result);
 
 	std::cout << "BT2020-------------------------\n";
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert< RGB, Interleaved, YUV444, Planar, BT_2020> (info);
+    colorspace_convert< RGB24, YUV444, BT_2020> (info);
     print_yuv(result);
 
 //**************************************************************************
-	std::cout << "YUV(444, 422 , 420) planar to RGB interleaved\n";
+/*
+    std::cout << "YUV(444, 422 , 420) planar to RGB interleaved\n";
 
     std::cout << "YUV444-------------------------\n";
     info.src_stride[0] = 8;
@@ -422,7 +422,7 @@ static int syntetic_test()
 	info.dst_data[2] = nullptr;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<A2R10G10B10, Interleaved, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<A2R10G10B10, RGB24, BT_601> (info);
 	print_rgb(result);
 
     //*****************************************************************
@@ -442,7 +442,7 @@ static int syntetic_test()
 	info.dst_data[2] = nullptr;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<A2R10G10B10, Interleaved, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<A2R10G10B10, RGB24, BT_601> (info);
 	print_rgb(result);
 
     //*****************************************************************
@@ -463,7 +463,7 @@ static int syntetic_test()
 	info.dst_data[2] = result +  8 * 2 + 8 * 2;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<A2R10G10B10, Interleaved, YUV444, Planar, BT_601> (info);
+    colorspace_convert<A2R10G10B10, YUV444, BT_601> (info);
 	print_yuv(result);
 
     //*****************************************************************

@@ -36,6 +36,7 @@ enum Colorspace
     YVYU,   // Composite Y->V->Y->U (4:2:2)
     UYVY,   // Composite U->Y->V->Y (4:2:2)
     YUY2,   // Composite Y->U->Y->V (4:2:2) (duplicate)
+    Y210,   // Composite Y->U->Y->V (4:2:2) (10 bit p/s)
 
     NV21, // Planar Y, merged V->U  (4:2:0)
     NV12, // Planar Y, merged U->V  (4:2:0)
@@ -44,7 +45,8 @@ enum Colorspace
     I420,   // Planar Y, U, V (4:2:0)
     YV16,   // Planar Y, V, U (4:2:2)
     YUV422, // Planar Y, U, V (4:2:2)
-
+    P210,   // Planar Y, U, V (4:2:2)  10 bit
+    P010,   // Planar,Y, U, V (4:2:0)  10-bit
     RGB24,
     A2R10G10B10 // 32bit
 };
@@ -245,6 +247,7 @@ template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs
        res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
     }
 }
+
 static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& valc, const uint32_t buf)
 {
             // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
@@ -390,6 +393,38 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx,  con
     {
         ctx.b1 = srcb[1];
         ctx.c1 = srcb[0];
+    }
+    if(cs == Y210)
+    {
+        ctx.a1 = (srca[0] << 8) | srca[1];
+        ctx.b1 = (srca[2] << 8) | srca[3];
+        ctx.a2 = (srca[4] << 8) | srca[5];
+        ctx.c1 = (srca[6] << 8) | srca[7];
+
+        ctx.a3 = (src_na[0] << 8) | src_na[1];
+        ctx.b3 = (src_na[2] << 8) | src_na[3];
+        ctx.a4 = (src_na[4] << 8) | src_na[5];
+        ctx.c3 = (src_na[6] << 8) | src_na[7];
+
+    }
+    if(cs == P210 || cs == P010)
+    {
+        ctx.a1 = (srca[0] << 8) | srca[1];
+        ctx.a2 = (srca[2] << 8) | srca[3];
+
+        ctx.a3 = (src_na[0] << 8) | src_na[1];
+        ctx.a4 = (src_na[2] << 8) | src_na[3];
+
+        ctx.b1 = (srcb[0] << 8) | srcb[1];
+        ctx.c1 = (srcb[2] << 8) | srcc[3];
+
+
+    }
+    if(cs == P210)
+    {
+        ctx.b3 = (src_nb[0] << 8) | src_nb[1];
+        ctx.c3 = (src_nb[2] << 8) | src_nc[3];
+
     }
 
 }
@@ -553,6 +588,23 @@ static inline uint32_t pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc
 }
 template < Colorspace cs> inline void unpack (Context &ctx)
 {
+    if(cs == Y210 || cs == P210 || cs == P010)
+    {
+        ctx.a1 >>= 6;
+        ctx.a2 >>= 6;
+        ctx.a3 >>= 6;
+        ctx.a4 >>= 6;
+
+        ctx.b1 >>= 6;
+        ctx.c1 >>= 6;
+
+    }
+    if(cs == P210 || cs == Y210)
+    {
+        ctx.b3 >>= 6;
+        ctx.c3 >>= 6;
+
+    }
     if(IS_YUV422( cs ))
     {
         ctx.c2 = ctx.c1;
@@ -579,6 +631,7 @@ template < Colorspace cs> inline void unpack (Context &ctx)
         ctx.b4 = ctx.b1;
         ctx.c4 = ctx.c1;
     }
+
 }
 
     /*
@@ -765,7 +818,54 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
         dstb[0] = ctx.c1;
         dstb[1] = ctx.b1;
     }
+    if(cs == Y210)
+    {
+        dsta[ 0 ] = (ctx.a1 >> 8) & 0xFF;
+        dsta[ 1 ] = (ctx.a1) & 0xFF;
+        dsta[ 2 ] = (ctx.b1 >> 8) & 0xFF;
+        dsta[ 3 ] = (ctx.b1) & 0xFF;
+        dsta[ 4 ] = (ctx.a2 >> 8) & 0xFF;
+        dsta[ 5 ] = (ctx.a2) & 0xFF;
+        dsta[ 6 ] = (ctx.c1 >> 8) & 0xFF;
+        dsta[ 7 ] = (ctx.c1) & 0xFF;
 
+
+        dst_na[ 0 ] = (ctx.a3 >> 8) & 0xFF;
+        dst_na[ 1 ] = (ctx.a3) & 0xFF;
+        dst_na[ 2 ] = (ctx.b3 >> 8) & 0xFF;
+        dst_na[ 3 ] = (ctx.b3) & 0xFF;
+        dst_na[ 4 ] = (ctx.a4 >> 8) & 0xFF;
+        dst_na[ 5 ] = (ctx.a4) & 0xFF;
+        dst_na[ 6 ] = (ctx.c3 >> 8) & 0xFF;
+        dst_na[ 7 ] = (ctx.c3) & 0xFF;
+
+    }
+    if(cs == P210 || cs == P010)
+    {
+        dsta[ 0 ] = (ctx.a1 >> 8) & 0xFF;
+        dsta[ 1 ] = (ctx.a1) & 0xFF;
+        dsta[ 2 ] = (ctx.a2 >> 8) & 0xFF;
+        dsta[ 3 ] = (ctx.a2) & 0xFF;
+        dst_na[ 0 ] = (ctx.a3 >> 8) & 0xFF;
+        dst_na[ 1 ] = (ctx.a3) & 0xFF;
+        dst_na[ 2 ] = (ctx.a4 >> 8) & 0xFF;
+        dst_na[ 3 ] = (ctx.a4) & 0xFF;
+
+
+        dstb[ 0 ] = (ctx.b1 >> 8) & 0xFF;
+        dstb[ 1 ] = (ctx.b1) & 0xFF;
+        dstb[ 2 ] = (ctx.c1 >> 8) & 0xFF;
+        dstb[ 3 ] = (ctx.c1) & 0xFF;
+
+         }
+    if(cs == P210)
+    {
+        dst_nb[ 0 ] = (ctx.b3 >> 8) & 0xFF;
+        dst_nb[ 1 ] = (ctx.b3) & 0xFF;
+
+        dst_nb[ 2 ] = (ctx.c3 >> 8) & 0xFF;
+        dst_nb[ 3 ] = (ctx.c3) & 0xFF;
+    }
 }
         /*
     if (pack == Interleaved)
@@ -906,12 +1006,29 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
 
 template <Colorspace cs> inline void pack(Context &ctx)
 {
+
     if(IS_YUV422( cs ))
     {
         ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
         ctx.c1 = ctx.c2 =  (ctx.c1 + ctx.c2) / 2;
         ctx.b3 = ctx.b4 =  (ctx.b3 + ctx.b4) / 2;
         ctx.c3 = ctx.c4 =  (ctx.c3 + ctx.c4) / 2;
+    }
+    if(cs == Y210 || cs == P210 || cs == P010)
+    {
+        ctx.a1 <<= 6;
+        ctx.a2 <<= 6;
+        ctx.a4 <<= 6;
+        ctx.a3 <<= 6;
+
+        ctx.b1 <<= 6;
+        ctx.c1 <<= 6;
+
+     }
+    if(cs == Y210 || cs == P210)
+    {
+        ctx.b3 <<= 6;
+        ctx.c3 <<= 6;
     }
 
     if( IS_YUV420( cs ))

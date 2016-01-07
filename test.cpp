@@ -247,6 +247,7 @@ static int syntetic_test()
 	info.width = 8;
 	info.height = 2;
     size_t stride = 8;
+    /*
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;

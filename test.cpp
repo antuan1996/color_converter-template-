@@ -120,6 +120,7 @@ int check( uint8_t* a, uint8_t* b, int width, int height ) {
 }
 
 
+
 static int syntetic_test()
 {
 // p = planar
@@ -168,12 +169,15 @@ static int syntetic_test()
 		// Cr
 		128, 240, 26, 118, 128, 138, 16, 230,
         66, 21, 175, 83, 235, 188, 133, 71
-	};
-    static uint8_t test_A2R10G10B10_bt601[(8 * 2) * 4] =
-	{
-        0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,    0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,
-        0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF,    0xFF,0xFF,0xFF,0xFF,    0xFF, 0xF, 0, 0,     3,0xF0, 0x3F,0,     3, 0, 0xC0, 0xFF
     };
+    static uint32_t test_A2R10G10B10_bt601[(8 * 2)] =
+    {
+        pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),    pack_A2R10G10B10(0x3FF, 0,0),      pack_A2R10G10B10(0, 0x3FF, 0),     pack_A2R10G10B10(0, 0, 0x3FF),
+        pack_A2R10G10B10(0x3FF, 0x3FF, 0),        pack_A2R10G10B10(0, 0x3FF, 0x3FF), pack_A2R10G10B10(0x3FF, 0, 0x3FF), pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),
+        pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),    pack_A2R10G10B10(0x3FF, 0,0),      pack_A2R10G10B10(0, 0x3FF, 0),     pack_A2R10G10B10(0, 0, 0x3FF),
+        pack_A2R10G10B10(0x3FF, 0x3FF, 0),        pack_A2R10G10B10(0, 0x3FF, 0x3FF), pack_A2R10G10B10(0x3FF, 0, 0x3FF), pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),
+    };
+
 	static uint8_t test_yuv444p_bt2020[(8 * 2) * 3] =
 	{
 		// Y
@@ -196,16 +200,16 @@ static int syntetic_test()
         107,202,62,         157,111,25,      74,221,167,     178,34,92,      94,147,231,    147,52,192,     115,71,137,      95,147,71
 	};
 
-
-    static uint8_t test_twisergb[(8 * 2) * 3] =
-	{
-        235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235,
-        16,16,16,     16,16,16,     235,235,16,   235,235,16,   16,235,235,  16,235,235,   235,16,235,    235,16,235
+    static uint8_t test_rgb_to_yuv422[(8 * 2) * 3] =
+    {
+        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255,
+        0,0,0,     0,0,0,     255,255,0,   255,255,0,   0,255,255,  0,255,255,   255,0,255,    255,0,255
     };
-    static uint8_t test_rgb_yuv420[(8 * 2) * 3] =
+
+    static uint8_t test_rgb_to_yuv420[(8 * 2) * 3] =
 	{
-        235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235,
-        235,235,235,  235,235,235,  235,16,16,    235,16,16,    16,235,16,   16,235,16,    16,16,235,     16,16,235
+        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255,
+        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255
     };
 
     static uint8_t test_yuv422p_bt601[(8 * 2) + 8 + 8] =
@@ -223,6 +227,15 @@ static int syntetic_test()
         128, 90,  54, 240,
         128, 240, 34, 110
     };
+
+    static uint8_t test_yuv420s_bt601[(8 * 2) + 4 + 4] =
+    {
+        235, 235, 81, 81, 145, 145, 41, 41,
+        235, 235, 81, 81, 145, 145, 41, 41,
+        128,128,  90, 240,54,34,240,110
+
+    };
+
     static uint8_t test_rgbn[(8 * 2) * 3] =
 	{
         235,235,235,  235,16,16,  16,235,16,   16,16,235,  16,16,16,    235,235,16,  16,235,235,  235,16,235,
@@ -236,18 +249,23 @@ static int syntetic_test()
 
     static uint8_t test_rgb24_to_A2R10G10B10[(8 * 2) * 3] =
     {
-        234,234,234,   234,16,16,   16,234,16,   16,16,234,   234,234,234,   234,16,16,   16,234,16,   16,16,234,
-        234,234,234,   234,16,16,   16,234,16,   16,16,234,   234,234,234,   234,16,16,   16,234,16,   16,16,234
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
     };
-	static uint8_t result[(8 * 2) * 3];
+    static uint8_t result[(8 * 2) * 3];
 	std::cout << "RGB to YUV tests\n";
 
-	std::cout << " RGB Interleaved to YUV444 planar (different standards) \n";
-	ConvertMeta info;
-	info.width = 8;
-	info.height = 2;
-    size_t stride = 8;
-    /*
+    ConvertMeta info;
+    info.width = 8;
+    info.height = 2;
+
+
+    //*****************************************************************
+
+    std::cout << " RGB Interleaved to YUV444 planar (different standards) \n";
+
+
+
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
@@ -279,8 +297,7 @@ static int syntetic_test()
     print_yuv(result);
 
 //**************************************************************************
-/*
-    std::cout << "YUV(444, 422 , 420) planar to RGB interleaved\n";
+
 
     std::cout << "YUV444-------------------------\n";
     info.src_stride[0] = 8;
@@ -288,19 +305,22 @@ static int syntetic_test()
     info.src_stride[2] = 8;
 
     info.dst_stride[0] = 8 * 3;
-    info.dst_stride[1] = 8;
-    info.dst_stride[2] = 8;
+    info.dst_stride[1] = 0;
+    info.dst_stride[2] = 0;
 
-	info.src_data[0] = test_yuv444p_bt601;
-	info.src_data[1] = test_yuv444p_bt601 + (8 * 2);
-	info.src_data[2] = test_yuv444p_bt601 + (8 * 2) + (8 * 2);
-	info.dst_data[0] = result;
-	info.dst_data[1] = nullptr;
-	info.dst_data[2] = nullptr;
+    info.src_data[0] = test_yuv444p_bt601;
+    info.src_data[1] = test_yuv444p_bt601 + 8 * 2;
+    info.src_data[2] = test_yuv444p_bt601 + 8 * 2 + 8 * 2;
 
-	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV444, Planar, RGB, Interleaved, BT_601> (info);
-	print_rgb(result);
+    info.dst_data[0] = result;
+    info.dst_data[1] = nullptr;
+    info.dst_data[2] = nullptr;
+
+    memset(result, 0xff, sizeof(result));
+    colorspace_convert<YUV444, RGB24, BT_601> (info);
+    print_rgb(result);
+
+
 
     std::cout << "YUV422-------------------------\n";
     info.src_stride[0] = 8;
@@ -319,7 +339,7 @@ static int syntetic_test()
 	info.dst_data[2] = result + 2 * 8 + 2 * 8;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV422, Planar, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<YUV422, RGB24, BT_601> (info);
 	print_rgb(result);
 
     std::cout << "YUV420-------------------------\n";
@@ -339,30 +359,11 @@ static int syntetic_test()
 	info.dst_data[2] = result + 2 * 8 + 2 * 8;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV420, Planar, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<I420, RGB24, BT_601> (info);
 	print_rgb(result);
 
 //*****************************************************************
-	std::cout << "YUV(444, 422) interleaved to RGB interleaved\n";
-
-    std::cout << "YUV444-------------------------\n";
-    info.src_stride[0] = 8 * 3;
-    info.src_stride[1] = 0;
-    info.src_stride[2] = 0;
-
-    info.dst_stride[0] = 8 * 3;
-    info.dst_stride[1] = 0;
-    info.dst_stride[2] = 0;
-
-	info.src_data[0] = test_yuv444i_bt601;
-	info.dst_data[0] = result;
-	info.dst_data[1] = nullptr;
-	info.dst_data[2] = nullptr;
-
-	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV444, Interleaved, RGB, Interleaved, BT_601> (info);
-	print_rgb(result);
-
+    std::cout << "YUV(422) interleaved to RGB interleaved\n";
 
     std::cout << "YUV422-------------------------\n";
     info.src_stride[0] = 8 * 2;
@@ -382,7 +383,7 @@ static int syntetic_test()
 	info.dst_data[2] = nullptr;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV422, Interleaved, RGB, Interleaved, BT_601> (info);
+    colorspace_convert<YUYV, RGB24, BT_601> (info);
 	print_rgb(result);
 
 //*****************************************************************
@@ -397,17 +398,16 @@ static int syntetic_test()
     info.dst_stride[1] = 8;
     info.dst_stride[2] = 8;
 
-	info.src_data[0] = test_A2R10G10B10_bt601;
+    info.src_data[0] = (uint8_t*)test_A2R10G10B10_bt601;
 	info.dst_data[0] = result;
 	info.dst_data[1] = result +  8 * 2;
 	info.dst_data[2] = result +  8 * 2 + 8 * 2;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<A2R10G10B10, Interleaved, YUV444, Planar, BT_601> (info);
+    colorspace_convert<A2R10G10B10, YUV444, BT_601> (info);
 	print_yuv(result);
-*/
 //*****************************************************************
-	std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved( Norm Range)\n";
+    std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved\n";
 
     info.src_stride[0] = 8 * 4;
     info.src_stride[1] = 0;
@@ -417,27 +417,7 @@ static int syntetic_test()
     info.dst_stride[1] = 0;
     info.dst_stride[2] = 0;
 
-	info.src_data[0] = test_A2R10G10B10_bt601;
-	info.dst_data[0] = result;
-	info.dst_data[1] = nullptr;
-	info.dst_data[2] = nullptr;
-
-	memset(result, 0xff, sizeof(result));
-    colorspace_convert<A2R10G10B10, RGB24, BT_601> (info);
-	print_rgb(result);
-
-    //*****************************************************************
-	std::cout << "A2R10G10B10 interleaved to RGB Ineteleaved( Full Range)\n";
-
-    info.src_stride[0] = 8 * 4;
-    info.src_stride[1] = 0;
-    info.src_stride[2] = 0;
-
-    info.dst_stride[0] = 8 * 3;
-    info.dst_stride[1] = 0;
-    info.dst_stride[2] = 0;
-
-	info.src_data[0] = test_A2R10G10B10_bt601;
+    info.src_data[0] = (uint8_t*)test_A2R10G10B10_bt601;
 	info.dst_data[0] = result;
 	info.dst_data[1] = nullptr;
 	info.dst_data[2] = nullptr;
@@ -458,7 +438,7 @@ static int syntetic_test()
     info.dst_stride[1] = 8;
     info.dst_stride[2] = 8;
 
-	info.src_data[0] = test_A2R10G10B10_bt601;
+    info.src_data[0] = (uint8_t*)test_A2R10G10B10_bt601;
 	info.dst_data[0] = result;
 	info.dst_data[1] = result +  8 * 2;
 	info.dst_data[2] = result +  8 * 2 + 8 * 2;
@@ -468,27 +448,29 @@ static int syntetic_test()
 	print_yuv(result);
 
     //*****************************************************************
-/*
+
     std::cout << "Same formats test\n";
 
-    std::cout << "YUV444 interleaved to planar\n";
-    info.src_stride[0] = 8 * 3;
-    info.src_stride[1] = 0;
-    info.src_stride[2] = 0;
+    std::cout << "YUV444 planar to YUV444 planar\n";
+    info.src_stride[0] = 8;
+    info.src_stride[1] = 8;
+    info.src_stride[2] = 8;
 
     info.dst_stride[0] = 8;
     info.dst_stride[1] = 8;
     info.dst_stride[2] = 8;
 
-	info.src_data[0] = test_yuv444i_bt601;
-	info.dst_data[0] = result;
+    info.src_data[0] = test_yuv444p_bt601;
+    info.src_data[1] = test_yuv444p_bt601 + 8 * 2;
+    info.src_data[2] = test_yuv444p_bt601 + 8 * 2 + 8 * 2;
+
+    info.dst_data[0] = result;
 	info.dst_data[1] = result +  8 * 2;
 	info.dst_data[2] = result +  8 * 2 + 8 * 2;
 
 	memset(result, 0xff, sizeof(result));
-    colorspace_convert<YUV444, Interleaved, YUV444, Planar, BT_601> (info);
+    colorspace_convert<YUV444, YUV444, BT_601> (info);
 	print_yuv(result);
- */
    /*
     std::cout << "YUV444 interleaved to planar FULL_RANGE\n";
     info.src_stride[0] = 8 * 3;
@@ -528,24 +510,43 @@ static int syntetic_test()
 
     */
     //*****************************************************************
-    /*
     std::cout << "Packing test\n";
+
+    std::cout << "RGB24 interleaved to YUV444 planar\n";
+    info.src_stride[0] = 8 * 3;
+    info.src_stride[1] = 0;
+    info.src_stride[2] = 0;
+
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 8;
+    info.dst_stride[2] = 8;
+
+    info.src_data[0] = test_rgbf;
+    info.dst_data[0] = result;
+    info.dst_data[1] = result + 8 * 2;
+    info.dst_data[2] = result + 8 * 2 + 8 * 2;
+
+    memset(result, 0xff, sizeof(result));
+    colorspace_convert<RGB24, YUV444, BT_601> (info);
+    print_yuv(result);
+
+    //*****************************************************************
     std::cout << "RGB24 interleaved to YUV422 interleaved\n";
     info.src_stride[0] = 8 * 3;
     info.src_stride[1] = 0;
     info.src_stride[2] = 0;
 
-    info.dst_stride[0] = 8 * 2;
-    info.dst_stride[1] = 0;
-    info.dst_stride[2] = 0;
+    info.dst_stride[0] = 8;
+    info.dst_stride[1] = 4;
+    info.dst_stride[2] = 4;
 
-	info.src_data[0] = test_rgb;
+    info.src_data[0] = test_rgb_to_yuv422;
 	info.dst_data[0] = result;
-	info.dst_data[1] = nullptr;
-	info.dst_data[2] = nullptr;
+    info.dst_data[1] = result + 8 * 2;
+    info.dst_data[2] = result + 8 * 2 + 4 * 2;
 
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, NORM_RANGE, YUV422, Interleaved, NORM_RANGE, BT_601> (info);
+    colorspace_convert<RGB24, YUV422, BT_601> (info);
 	print_yuv(result);
     //*****************************************************************
     std::cout << "Packing test\n";
@@ -558,57 +559,39 @@ static int syntetic_test()
     info.dst_stride[1] = 4;
     info.dst_stride[2] = 4;
 
-	info.src_data[0] = test_rgb_yuv420;
+    info.src_data[0] = test_rgb_to_yuv420;
 	info.dst_data[0] = result;
 	info.dst_data[1] = result + 8 * 2;
 	info.dst_data[2] = result + 8 * 2 + 4;
 
 	memset(result, 0xff, sizeof(result));
-	colorspace_convert<RGB, Interleaved, NORM_RANGE, YUV420, Planar, NORM_RANGE, BT_601> (info);
+    colorspace_convert<RGB24, I420, BT_601> (info);
 	print_yuv(result);
-
     //*****************************************************************
     std::cout << "Semiplanar test\n";
-    std::cout << "YUV444 semiplanar to planar\n";
+    std::cout << "Semiplanar YUV420 to planar yuv444\n";
+    //y y
+    //y y
+    //u v
+
     info.src_stride[0] = 8;
-    info.src_stride[1] = 8 * 2;
+    info.src_stride[1] = 8;
     info.src_stride[2] = 0;
 
     info.dst_stride[0] = 8;
     info.dst_stride[1] = 8;
     info.dst_stride[2] = 8;
 
-	info.src_data[0] = test_yuv444s_bt601;
-	info.src_data[1] = test_yuv444s_bt601 + 8 * 2;
+    info.src_data[0] = test_yuv420s_bt601;
+    info.src_data[1] = test_yuv420s_bt601 + 8 * 2;
 
+    info.dst_data[0] = result;
+    info.dst_data[1] = result + 8 * 2;
+    info.dst_data[2] = result + 8 * 2 + 8 * 2;
 
-	info.dst_data[0] = result;
-	info.dst_data[1] = result + 8 * 2;
-	info.dst_data[2] = result + 8 * 2 + 8 * 2;
-
-	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, SemiPlanar, NORM_RANGE, YUV444, Planar, NORM_RANGE, BT_601> (info);
-	print_yuv(result);
-    //*****************************************************************
-    std::cout << "YUV444 planar to semiplanar\n";
-    info.src_stride[0] = 8;
-    info.src_stride[1] = 8;
-    info.src_stride[2] = 8;
-
-    info.dst_stride[0] = 8;
-    info.dst_stride[1] = 8 * 2;
-
-	info.src_data[0] = test_yuv444p_bt601;
-	info.src_data[1] = test_yuv444p_bt601 + 8 * 2;
-	info.src_data[2] = test_yuv444p_bt601 + 8 * 2 + 8 * 2;
-
-	info.dst_data[0] = result;
-	info.dst_data[1] = result + 8 * 2;
-
-	memset(result, 0xff, sizeof(result));
-	colorspace_convert<YUV444, Planar, NORM_RANGE, YUV444, SemiPlanar, NORM_RANGE, BT_601> (info);
-	print_yuv(result);
-    */
+    memset(result, 0xff, sizeof(result));
+    colorspace_convert<NV12, YUV444, BT_601> (info);
+    print_yuv(result);
 
 	return 0;
 }

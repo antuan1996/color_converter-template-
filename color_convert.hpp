@@ -35,7 +35,7 @@ enum Colorspace
     YUYV,   // Composite Y->U->Y->V (4:2:2)
     YVYU,   // Composite Y->V->Y->U (4:2:2)
     UYVY,   // Composite U->Y->V->Y (4:2:2)
-    YUY2,   // Composite Y->U->Y->V (4:2:2) (duplicate)
+    YUY2 = YUYV,   // Composite Y->U->Y->V (4:2:2) (duplicate)
     Y210,   // Composite Y->U->Y->V (4:2:2) (10 bit p/s)
 
     NV21, // Planar Y, merged V->U  (4:2:0)
@@ -47,7 +47,7 @@ enum Colorspace
     YUV422, // Planar Y, U, V (4:2:2)
     P210,   // Planar Y, U, V (4:2:2)  10 bit
     P010,   // Planar,Y, U, V (4:2:0)  10-bit
-    //V210,   // Planar, 12  10bit values packed in 128bit
+    V210,   // Planar, 12  10bit values packed in 128bit
     RGB24,
     A2R10G10B10 // 32bit
 };
@@ -145,10 +145,21 @@ static const size_t k_yuv444_interleaved_steps[3] = { 3, 3, 3 };
 
 template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& posc, const int cur_pos)
 {
-    if (cs == RGB24 || cs == YUV444) {
+    posa = 0;
+    posb = 0;
+    posc = 0;
+    if (cs == RGB24 )
+    {
         posa = cur_pos * 3;
         return;
 	}
+    if( cs == YUV444)
+    {
+        posa = cur_pos;
+        posb = cur_pos;
+        posc = cur_pos;
+
+    }
 	if (cs == A2R10G10B10) {
         posa = cur_pos * 4;
 	}
@@ -369,12 +380,31 @@ static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& val
 
 
 }
-template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx,  const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
+template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
 {
     const uint8_t* src_na = srca + meta.src_stride[0];
     const uint8_t* src_nb = srcb + meta.src_stride[1];
     const uint8_t* src_nc = srcc + meta.src_stride[2];
-    if(cs == RGB24 || cs == YUV444){
+    if(cs == YUV444)
+    {
+        ctx.a1 = srca[0];
+        ctx.b1 = srcb[0];
+        ctx.c1 = srcc[0];
+
+        ctx.a2 = srca[1];
+        ctx.b2 = srcb[1];
+        ctx.c2 = srcc[1];
+
+        ctx.a3 = src_na[0];
+        ctx.b3 = src_nb[0];
+        ctx.c3 = src_nc[0];
+
+        ctx.a4 = src_na[1];
+        ctx.b4 = src_nb[1];
+        ctx.c4 = src_nc[1];
+
+    }
+    if(cs == RGB24){
         ctx.a1 = srca[0];
         ctx.b1 = srca[1];
         ctx.c1 = srca[2];
@@ -530,7 +560,19 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx,  con
         ctx.c3 = (src_nb[2] << 8) | src_nc[3];
 
     }
+    if(cs == V210)
+    {
+        memcpy( &ctx.a1, srca, 4);
+        memcpy( &ctx.b1, srca + 4, 4);
+        memcpy( &ctx.a2, srca + 8, 4);
+        memcpy( &ctx.b2, srca + 12, 4);
 
+        memcpy( &ctx.a3, src_na, 4);
+        memcpy( &ctx.b3, src_na + 4, 4);
+        memcpy( &ctx.a4, src_na + 8, 4);
+        memcpy( &ctx.b4, src_na + 12, 4);
+
+    }
 }
     /*
     if (pack == Interleaved)
@@ -693,8 +735,9 @@ static inline uint32_t pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc
     res = ((valc & 0X3FF) << 22) | ((valb & 0X3FF) << 12) | ((vala & 0X3FF) << 2) | 3;
     return res;
 }
-template < Colorspace cs> inline void unpack (Context &ctx)
+template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Context& ctx3)
 {
+
     if(cs == Y210 || cs == P210 || cs == P010)
     {
         ctx.a1 >>= 6;
@@ -712,13 +755,9 @@ template < Colorspace cs> inline void unpack (Context &ctx)
         ctx.c3 >>= 6;
 
     }
-    if(IS_YUV422( cs ))
+    if(cs == V210)
     {
-        ctx.c2 = ctx.c1;
-        ctx.b2 = ctx.b1;
-
-        ctx.c4 = ctx.c3;
-        ctx.b4 = ctx.b3;
+        unpack_V210(ctx, ctx2, ctx3);
     }
     if(cs == A2R10G10B10)
     {
@@ -726,6 +765,15 @@ template < Colorspace cs> inline void unpack (Context &ctx)
         unpack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, ctx.a2);
         unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, ctx.a3);
         unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, ctx.a4);
+    }
+
+    if(IS_YUV422( cs ))
+    {
+        ctx.c2 = ctx.c1;
+        ctx.b2 = ctx.b1;
+
+        ctx.c4 = ctx.c3;
+        ctx.b4 = ctx.b3;
     }
     if(IS_YUV420( cs ))
     {
@@ -809,7 +857,8 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     uint8_t* dst_nb = dstb + meta.dst_stride[1];
     uint8_t* dst_nc = dstc + meta.dst_stride[2];
 
-    if(cs == RGB24 || cs == YUV444){
+    if(cs == RGB24)
+    {
         dsta[0] = ctx.a1;
         dsta[1] = ctx.b1;
         dsta[2] = ctx.c1;
@@ -827,6 +876,26 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
         dst_na[5] = ctx.c4;
         return;
     }
+    if(cs == YUV444)
+    {
+        dsta[0] = ctx.a1;
+        dsta[1] = ctx.a2;
+        dst_na[0] = ctx.a3;
+        dst_na[1] = ctx.a4;
+
+        dstb[0] = ctx.b1;
+        dstb[1] = ctx.b2;
+        dst_nb[0] = ctx.b3;
+        dst_nb[1] = ctx.b4;
+
+        dstc[0] = ctx.c1;
+        dstc[1] = ctx.c2;
+        dst_nc[0] = ctx.c3;
+        dst_nc[1] = ctx.c4;
+
+        return;
+    }
+
     if(cs == A2R10G10B10)
     {
         memcpy(dsta, &ctx.a1, 4);
@@ -911,9 +980,9 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     if(cs == YUV422)
     {
         dstb[0] = ctx.b1;
-        dst_nb[0] = ctx.b2;
+        dst_nb[0] = ctx.b3;
         dstc[0] = ctx.c1;
-        dst_nc[0] = ctx.c2;
+        dst_nc[0] = ctx.c3;
     }
     if(cs == NV21 || cs == NV12)
     {
@@ -1119,16 +1188,8 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
 	}
     */
 
-template <Colorspace cs> inline void pack(Context &ctx)
+template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Context& ctx3 = 0)
 {
-
-    if(IS_YUV422( cs ))
-    {
-        ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
-        ctx.c1 = ctx.c2 =  (ctx.c1 + ctx.c2) / 2;
-        ctx.b3 = ctx.b4 =  (ctx.b3 + ctx.b4) / 2;
-        ctx.c3 = ctx.c4 =  (ctx.c3 + ctx.c4) / 2;
-    }
     if(cs == Y210 || cs == P210 || cs == P010)
     {
         ctx.a1 <<= 6;
@@ -1146,6 +1207,13 @@ template <Colorspace cs> inline void pack(Context &ctx)
         ctx.c3 <<= 6;
     }
 
+    if(IS_YUV422( cs ))
+    {
+        ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
+        ctx.c1 = ctx.c2 =  (ctx.c1 + ctx.c2) / 2;
+        ctx.b3 = ctx.b4 =  (ctx.b3 + ctx.b4) / 2;
+        ctx.c3 = ctx.c4 =  (ctx.c3 + ctx.c4) / 2;
+    }
     if( IS_YUV420( cs ))
     {
         ctx.b1 = (ctx.b1 + ctx.b2 + ctx.b3 + ctx.b4) / 4;
@@ -1158,6 +1226,10 @@ template <Colorspace cs> inline void pack(Context &ctx)
         ctx.a2 = pack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2);
         ctx.a3 = pack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3);
         ctx.a4 = pack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4);
+    }
+    if(cs == V210)
+    {
+        pack_V210(ctx, ctx2, ctx3);
     }
 }
 
@@ -1347,7 +1419,6 @@ template <Colorspace from_cs, Colorspace to_cs> inline void transform (Context &
 
     } // if(from_cs_type != to_type)
 }
-
 template <Colorspace cs> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b, uint8_t* &ptr_c, const size_t stride[3])
 {
     // TODO This define was used only once
@@ -1388,7 +1459,6 @@ template <Colorspace cs> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b,
 	}
    */
 }
-
 template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_convert(ConvertMeta& meta)
 {
 	int32_t transform_matrix[ 3 * 3 ];
@@ -1404,45 +1474,150 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
 	uint8_t* dst_a = meta.dst_data[0];
 	uint8_t* dst_b = meta.dst_data[1];
 	uint8_t* dst_c = meta.dst_data[2];
-    Context context;
+    Context context1, context2, context3;
+    int8_t step;
+    if(from_cs == V210 || to_cs == V210)
+        step = 6;
+    else
+        step = 2;
+    size_t x,y;
+    size_t shift_a, shift_b, shift_c;
+    if(from_cs == V210 && to_cs == V210)
+    {
+        memcpy(dst_a, src_a, meta.width * meta.height * 16 / 6);
+    }
+    else
+    for(y = 0; y < meta.height; y += 2) {
+        for(x = 0; x+step <= meta.width; x += step) {
+            // Process 2 x 2(Step) pixels
 
-	for(size_t y = 0; y < meta.height; y += 2) {
-		for(size_t x = 0; x < meta.width; x += 2) {
-			// Process 2x2 pixels
-			size_t shift_a, shift_b, shift_c;
-            get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-            load < from_cs> (meta, context,
+            if(to_cs == V210 && from_cs != V210)
+            {
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
+                load < from_cs> (meta, context1,
                                         src_a + shift_a,
                                         src_b + shift_b,
                                         src_c + shift_c);
-            unpack <from_cs>(context);
-            #ifdef ENABLE_LOG
-                std::cout  << "loaded" << std::endl;
-            #endif // ENABLE_LOG
-            transform <from_cs, to_cs> (context, transform_matrix, meta);
+
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x + 2);
+                load < from_cs> (meta, context2,
+                                            src_a + shift_a,
+                                            src_b + shift_b,
+                                            src_c + shift_c);
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x + 4);
+                load < from_cs> (meta, context3,
+                                            src_a + shift_a,
+                                            src_b + shift_b,
+                                            src_c + shift_c);
+                unpack <from_cs> (context1, context1, context1);
+                unpack <from_cs> (context2, context2, context2);
+                unpack <from_cs> (context3, context3, context3);
+
+                transform <from_cs, to_cs> (context1, transform_matrix, meta);
+                transform <from_cs, to_cs> (context2, transform_matrix, meta);
+                transform <from_cs, to_cs> (context3, transform_matrix, meta);
+
+                pack< to_cs >(context1, context2, context3);
+
+                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
+                store<to_cs > (meta, context1,
+                                     dst_a + shift_a,
+                                     dst_b + shift_b,
+                                     dst_c + shift_c);
+            }
+            else if(from_cs == V210 && to_cs != V210)
+            {
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
+                load < from_cs> (meta, context1,
+                                            src_a + shift_a,
+                                            src_b + shift_b,
+                                            src_c + shift_c);
+                unpack <from_cs> (context1, context2, context3);
+
+                transform <from_cs, to_cs> (context1, transform_matrix, meta);
+                transform <from_cs, to_cs> (context2, transform_matrix, meta);
+                transform <from_cs, to_cs> (context3, transform_matrix, meta);
+
+                pack< to_cs >(context1, context1, context1);
+                pack< to_cs >(context2, context2, context2);
+                pack< to_cs >(context3, context3, context3);
+
+                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
+                store< to_cs > (meta, context1,
+                                     dst_a + shift_a,
+                                     dst_b + shift_b,
+                                     dst_c + shift_c);
+                get_pos <to_cs>(shift_a, shift_b, shift_c, x + 2);
+                store< to_cs > (meta, context2,
+                                     dst_a + shift_a,
+                                     dst_b + shift_b,
+                                     dst_c + shift_c);
+                get_pos <to_cs>(shift_a, shift_b, shift_c, x + 4);
+                store< to_cs > (meta, context3,
+                                     dst_a + shift_a,
+                                     dst_b + shift_b,
+                                     dst_c + shift_c);
+            }
+            else if(from_cs != V210 && to_cs != V210)
+            {
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
+                load < from_cs> (meta, context1,
+                                        src_a + shift_a,
+                                        src_b + shift_b,
+                                        src_c + shift_c);
+
+                unpack <from_cs> (context1, context2, context3);
+
+                transform <from_cs, to_cs> (context1, transform_matrix, meta);
+
+                pack<to_cs > (context1, context1, context1);
+
+                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
+                store<to_cs > (meta, context1,
+                                             dst_a + shift_a,
+                                             dst_b + shift_b,
+                                             dst_c + shift_c);
+            }
+        }
+        // finish line
+        if(meta.width % step != 0  && to_cs == V210 && from_cs != V210)
+        {
+            context2.a1 = context2.a2 = context2.a3 = context2.a4 = 0;
+            context2.b1 = context2.b2 = context2.b3 = context2.b4 = 0;
+            context2.c1 = context2.c2 = context2.c3 = context2.c4 = 0;
+
+            get_pos <from_cs>(shift_a, shift_b, shift_c, x);
+            load < from_cs> (meta, context1,
+                                    src_a + shift_a,
+                                    src_b + shift_b,
+                                    src_c + shift_c);
+
+            if(meta.width % 6 >= 4) //==4
+            {
+                get_pos <from_cs>(shift_a, shift_b, shift_c, x + 2);
+                load < from_cs> (meta, context2,
+                                        src_a + shift_a,
+                                        src_b + shift_b,
+                                        src_c + shift_c);
+            }
+
+            unpack <from_cs> (context1, context1, context1);
+            unpack <from_cs> (context2, context2, context2);
+            unpack <from_cs> (context3, context3, context3);
+
+            transform <from_cs, to_cs> (context1, transform_matrix, meta);
+            transform <from_cs, to_cs> (context2, transform_matrix, meta);
+            transform <from_cs, to_cs> (context3, transform_matrix, meta);
+
+            pack< to_cs >(context1, context2, context3);
 
             get_pos <to_cs>(shift_a, shift_b, shift_c, x);
+            store<to_cs > (meta, context1,
+                                 dst_a + shift_a,
+                                 dst_b + shift_b,
+                                 dst_c + shift_c);
+        }
 
-			#ifdef ENABLE_LOG
-                std::cout << "converted \n";
-            #endif // ENABLE_LOG
-
-            pack<to_cs > (context);
-
-			#ifdef ENABLE_LOG
-                std::cout << "packed \n";
-            #endif // ENABLE_LOG
-
-
-            store<to_cs > (meta, context,
-                                         dst_a + shift_a,
-                                         dst_b + shift_b,
-                                         dst_c + shift_c);
-            #ifdef ENABLE_LOG
-                std::cout << "stored\n";
-            #endif // ENABLE_LOG
-
-		}
         next_row <from_cs> (src_a, src_b, src_c, meta.src_stride);
         next_row <to_cs> (dst_a, dst_b, dst_c, meta.dst_stride);
 	}

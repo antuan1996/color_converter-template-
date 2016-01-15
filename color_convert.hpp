@@ -33,9 +33,9 @@ enum Colorspace
 //  name       pack     order       size
     YUV444, // Composite Y->U->V    (4:4:4)
     YUYV,   // Composite Y->U->Y->V (4:2:2)
+    YUY2 = YUYV,   // Composite Y->U->Y->V (4:2:2) (duplicate)
     YVYU,   // Composite Y->V->Y->U (4:2:2)
     UYVY,   // Composite U->Y->V->Y (4:2:2)
-    YUY2 = YUYV,   // Composite Y->U->Y->V (4:2:2) (duplicate)
     Y210,   // Composite Y->U->Y->V (4:2:2) (10 bit p/s)
 
     NV21, // Planar Y, merged V->U  (4:2:0)
@@ -47,7 +47,7 @@ enum Colorspace
     YUV422, // Planar Y, U, V (4:2:2)
     P210,   // Planar Y, U, V (4:2:2)  10 bit
     P010,   // Planar,Y, U, V (4:2:0)  10-bit
-    V210,   // Planar, 12  10bit values packed in 128bit
+    V210,   // Interleaved, 12  10bit values packed in 128bit
     RGB24,
     A2R10G10B10 // 32bit
 };
@@ -80,7 +80,9 @@ struct ConvertMeta
     int32_t offset_u;
     int32_t offset_v;
 	size_t src_stride[3];
-	size_t dst_stride[3];
+    size_t dst_stride_horiz[3];
+    size_t dst_stride_vert[3];
+
 };
 
 static const int32_t k_bt601_RGB_to_YUV[3 * 3] =
@@ -192,8 +194,9 @@ template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& 
     if(cs == P210 || cs == P010)
     {
         posa = cur_pos * 2;
-        posb = cur_pos * 4;
+        posb = cur_pos * 2;
     }
+    // TODO add new formats
         /*
         if(pack == SemiPlanar){
             posa = cur_pos;
@@ -543,6 +546,7 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
     }
     if(cs == P210 || cs == P010)
     {
+        // TODO OPTIMIZE
         ctx.a1 = (srca[0] << 8) | srca[1];
         ctx.a2 = (srca[2] << 8) | srca[3];
 
@@ -853,9 +857,9 @@ template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Conte
 //}
 template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& ctx,  uint8_t* dsta, uint8_t* dstb, uint8_t* dstc)
 {
-    uint8_t* dst_na = dsta + meta.dst_stride[0];
-    uint8_t* dst_nb = dstb + meta.dst_stride[1];
-    uint8_t* dst_nc = dstc + meta.dst_stride[2];
+    uint8_t* dst_na = dsta + meta.dst_stride_horiz[0];
+    uint8_t* dst_nb = dstb + meta.dst_stride_horiz[1];
+    uint8_t* dst_nc = dstc + meta.dst_stride_horiz[2];
 
     if(cs == RGB24)
     {
@@ -973,9 +977,9 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     if(cs == YV16)
     {
         dstb[0] = ctx.c1;
-        dst_nb[0] = ctx.c2;
+        dst_nb[0] = ctx.c3;
         dstc[0] = ctx.b1;
-        dst_nc[0] = ctx.b2;
+        dst_nc[0] = ctx.b3;
     }
     if(cs == YUV422)
     {
@@ -1041,7 +1045,7 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
         dstb[ 2 ] = (ctx.c1 >> 8) & 0xFF;
         dstb[ 3 ] = (ctx.c1) & 0xFF;
 
-         }
+    }
     if(cs == P210)
     {
         dst_nb[ 0 ] = (ctx.b3 >> 8) & 0xFF;
@@ -1431,6 +1435,12 @@ template <Colorspace cs> inline void next_row (uint8_t* &ptr_a, uint8_t* &ptr_b,
         ptr_b += stride[1] * 2;
         ptr_c += stride[2] * 2;
     }
+    if( IS_SEMIPLANAR ( cs ) ) //YUV420
+    {
+        ptr_a += stride[0] * 2;
+        ptr_b += stride[1];
+    }
+
     /*
     else
     {
@@ -1464,8 +1474,6 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
 	int32_t transform_matrix[ 3 * 3 ];
     set_transform_coeffs<from_cs, to_cs, st>(transform_matrix);
     convert_range <from_cs, to_cs>(transform_matrix);
-
-    init_offset_yuv<from_cs, to_cs>( meta );
 
 	uint8_t* src_a = meta.src_data[0];
 	uint8_t* src_b = meta.src_data[1];
@@ -1619,7 +1627,7 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
         }
 
         next_row <from_cs> (src_a, src_b, src_c, meta.src_stride);
-        next_row <to_cs> (dst_a, dst_b, dst_c, meta.dst_stride);
+        next_row <to_cs> (dst_a, dst_b, dst_c, meta.dst_stride_horiz);
 	}
 }
 

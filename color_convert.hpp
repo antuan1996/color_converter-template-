@@ -38,15 +38,15 @@ enum Colorspace
     UYVY,   // Composite U->Y->V->Y (4:2:2)
     Y210,   // Composite Y->U->Y->V (4:2:2) (10 bit p/s)
 
-    NV21, // Planar Y, merged V->U  (4:2:0)
-    NV12, // Planar Y, merged U->V  (4:2:0)
+    NV21,   // Planar Y, merged V->U (4:2:0)
+    NV12,   // Planar Y, merged U->V (4:2:0)
+    P210,   // Planar Y, merged V->U (4:2:2)  10 bit
+    P010,   // Planar Y, merged V->U (4:2:0)  10-bit
 
     YV12,   // Planar Y, V, U (4:2:0)
     I420,   // Planar Y, U, V (4:2:0)
     YV16,   // Planar Y, V, U (4:2:2)
     YUV422, // Planar Y, U, V (4:2:2)
-    P210,   // Planar Y, U, V (4:2:2)  10 bit
-    P010,   // Planar,Y, U, V (4:2:0)  10-bit
     V210,   // Interleaved, 12  10bit values packed in 128bit
     RGB24,
     A2R10G10B10 // 32bit
@@ -72,6 +72,13 @@ struct Context
 
 struct ConvertMeta
 {
+    ConvertMeta()
+    {
+        dst_data[ 0 ] = nullptr;
+        dst_data[ 1 ] = nullptr;
+        dst_data[ 2 ] = nullptr;
+    }
+
 	uint8_t *src_data[3];
 	uint8_t *dst_data[3];
 	size_t width;
@@ -329,6 +336,8 @@ static inline void unpack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
     ctx3.a4 = (data4 >> 20) & 0X3FF;
 
 }
+
+
 static inline void pack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
 {
     uint32_t data1 = 0, data2 = 0, data3 = 0, data4  = 0;
@@ -547,25 +556,22 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
     if(cs == P210 || cs == P010)
     {
         // TODO OPTIMIZE
-        ctx.a1 = (srca[0] << 8) | srca[1];
-        ctx.a2 = (srca[2] << 8) | srca[3];
+        ctx.a1 = *(uint16_t*)(srca);
+        ctx.a2 = *(uint16_t*)(srca + 2);
+        ctx.a3 = *(uint16_t*)(src_na);
+        ctx.a4 = *(uint16_t*)(src_na + 2);
 
-        ctx.a3 = (src_na[0] << 8) | src_na[1];
-        ctx.a4 = (src_na[2] << 8) | src_na[3];
-
-        ctx.b1 = (srcb[0] << 8) | srcb[1];
-        ctx.c1 = (srcb[2] << 8) | srcc[3];
-
-
+        ctx.b1 = *(uint16_t*)(srcb);
+        ctx.c1 = *(uint16_t*)(srcb + 2);
     }
     if(cs == P210)
     {
-        ctx.b3 = (src_nb[0] << 8) | src_nb[1];
-        ctx.c3 = (src_nb[2] << 8) | src_nc[3];
-
+        ctx.b3 = *(uint16_t*)(src_nb);
+        ctx.c3 = *(uint16_t*)(src_nb + 2);
     }
     if(cs == V210)
     {
+        // TODO OPTIMIZE
         memcpy( &ctx.a1, srca, 4);
         memcpy( &ctx.b1, srca + 4, 4);
         memcpy( &ctx.a2, srca + 8, 4);
@@ -1030,29 +1036,19 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     }
     if(cs == P210 || cs == P010)
     {
-        dsta[ 0 ] = (ctx.a1 >> 8) & 0xFF;
-        dsta[ 1 ] = (ctx.a1) & 0xFF;
-        dsta[ 2 ] = (ctx.a2 >> 8) & 0xFF;
-        dsta[ 3 ] = (ctx.a2) & 0xFF;
-        dst_na[ 0 ] = (ctx.a3 >> 8) & 0xFF;
-        dst_na[ 1 ] = (ctx.a3) & 0xFF;
-        dst_na[ 2 ] = (ctx.a4 >> 8) & 0xFF;
-        dst_na[ 3 ] = (ctx.a4) & 0xFF;
+        memcpy(dsta, &ctx.a1, 2);
+        memcpy(dsta + 2, &ctx.a2, 2);
+        memcpy(dst_na, &ctx.a3, 2);
+        memcpy(dst_na + 2, &ctx.a4, 2);
 
-
-        dstb[ 0 ] = (ctx.b1 >> 8) & 0xFF;
-        dstb[ 1 ] = (ctx.b1) & 0xFF;
-        dstb[ 2 ] = (ctx.c1 >> 8) & 0xFF;
-        dstb[ 3 ] = (ctx.c1) & 0xFF;
-
+        memcpy(dstb, &ctx.b1, 2);
+        memcpy(dstb + 2, &ctx.c1, 2);
     }
     if(cs == P210)
     {
-        dst_nb[ 0 ] = (ctx.b3 >> 8) & 0xFF;
-        dst_nb[ 1 ] = (ctx.b3) & 0xFF;
+        memcpy(dst_nb, &ctx.b3, 2);
+        memcpy(dst_nb + 2, &ctx.c3, 2);
 
-        dst_nb[ 2 ] = (ctx.c3 >> 8) & 0xFF;
-        dst_nb[ 3 ] = (ctx.c3) & 0xFF;
     }
 }
         /*

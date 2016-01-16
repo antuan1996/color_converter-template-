@@ -147,14 +147,6 @@ static void print_planar(ConvertMeta info)
 }
 
 
-int check( uint8_t* a, uint8_t* b, int width, int height ) {
-    int res = 0;
-    for( size_t y = 0; y < uint(height); ++y )
-        for( size_t x = 0 ; x < uint(width) ; ++x ) {
-            res += abs( a[y * width + x] - b[y * width + x] );
-        }
-    return res;
-}
 
 template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta , int width, int height, uint8_t* src_a, uint8_t* src_b = nullptr,uint8_t* src_c = nullptr)
 {
@@ -167,6 +159,11 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
     meta.src_stride[ 0 ] = meta.src_stride[ 1 ] = meta.src_stride[ 2 ] = 0;
     meta.dst_stride_horiz[ 0 ] = meta.dst_stride_horiz[ 1 ] = meta.dst_stride_horiz[ 2 ] = 0;
     meta.dst_stride_vert[ 0 ] = meta.dst_stride_vert[ 1 ] = meta.dst_stride_vert[ 2 ] = 0;
+    if( meta.dst_data[ 0 ] != nullptr)
+        free( meta.dst_data[ 0 ]);
+    meta.dst_data[ 0 ] = nullptr;
+    meta.dst_data[ 1 ] = nullptr;
+    meta.dst_data[ 2 ] = nullptr;
     if(from_cs == RGB24)
     {
         meta.src_stride[ 0 ] = width * 3;
@@ -209,8 +206,7 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
     if(from_cs == P210 || from_cs == P010)
     {
         meta.src_stride[ 0 ] = width * 2;
-        meta.src_stride[ 1 ] = width;
-        meta.src_stride[ 2 ] = width;
+        meta.src_stride[ 1 ] = width * 2;
     }
     if(from_cs == V210)
     {
@@ -447,16 +443,27 @@ static int syntetic_test()
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
     };
-    static uint8_t result[(8 * 2) * 3];
-	std::cout << "RGB to YUV tests\n";
+    static uint16_t test_P210[ 8 * 2 + 4 * 2 + 4 * 2 ]
+    {
+        940 << 6, 940 << 6, 324 << 6, 324 << 6, 580 << 6, 580 << 6, 164 << 6, 164 << 6,
+        64 << 6, 64 << 6, 840 << 6, 840 << 6, 680 << 6, 680 << 6, 424 << 6, 424 << 6,
+
+        512 << 6, 512 << 6, 360 << 6, 960 << 6, 216 << 6, 136 << 6, 960 << 6, 440 << 6,
+        512 << 6, 512 << 6, 64 << 6, 584 << 6, 664 << 6, 64 << 6, 808 << 6, 888 << 6,
+    };
+    static uint16_t test_P010[ 8 * 2 + 4 + 4 ]
+    {
+        940 << 6, 940 << 6, 324 << 6, 324 << 6, 580 << 6, 580 << 6, 164 << 6, 164 << 6,
+        940 << 6, 940 << 6, 324 << 6, 324 << 6, 580 << 6, 580 << 6, 164 << 6, 164 << 6,
+
+        512 << 6, 512 << 6, 360 << 6, 960 << 6, 216 << 6, 136 << 6, 960 << 6, 440 << 6,
+    };
+
 
     ConvertMeta info;
-    info.width = 8;
-    info.height = 2;
-
-
     //*****************************************************************
 
+    std::cout << "RGB to YUV tests\n";
     std::cout << " RGB Interleaved to YUV444 planar (different standards) \n";
 
     set_meta <RGB24, YUV444>(info, 8, 2, test_rgbf);
@@ -513,7 +520,7 @@ static int syntetic_test()
     set_meta <I420, YUV444 >(info, 8, 2, test_yuv420p_bt601, test_yuv420p_bt601 + 8 * 2, test_yuv420p_bt601 + 8 * 2 + 4  );
     colorspace_convert<I420, YUV444, BT_601> (info);
     print_planar( info ) ;
-    //*****************************************************************
+//*****************************************************************
     std::cout << "Absolutely same formats test (YUV)\n";
     std::cout << "YUV444 to YUV444-------------------------\n";
     set_meta <YUV444, YUV444 >(info, 8, 2, test_yuv444p_bt601, test_yuv444p_bt601 + 8 * 2, test_yuv444p_bt601 + 8 * 2 + 8 * 2 );
@@ -530,8 +537,7 @@ static int syntetic_test()
     colorspace_convert<I420, I420, BT_601> (info);
     print_planar( info ) ;
 
-
-    //*****************************************************************
+//*****************************************************************
     std::cout << "Repack test\n";
     std::cout << "YUYV to UYVY-------------------------\n";
     set_meta <YUYV, UYVY >(info, 8, 2, test_yuv422i_bt601);
@@ -553,7 +559,21 @@ static int syntetic_test()
     colorspace_convert<YUV422, YV16, BT_601> (info);
     print_planar( info ) ;
 
-    std::cout << "YUV422 to YV16-------------------------\n";
+//*****************************************************************
+    std::cout << "P210 and P010 test\n";
+    std::cout << "P210 to YUV444-------------------------\n";
+    set_meta <P210, YUV444 >(info, 8, 2, (uint8_t*)test_P210, (uint8_t*)test_P210 + 8 * 2 * 2, (uint8_t*)test_P210 + 8 * 2 * 2 + 4 * 2 * 2);
+    colorspace_convert<P210, YUV444, BT_601> (info);
+    print_planar( info ) ;
+
+    std::cout << "P010 to YUV444-------------------------\n";
+    set_meta <P010, YUV444 >(info, 8, 2, (uint8_t*)test_P010, (uint8_t*)test_P010 + 8 * 2 * 2, (uint8_t*)test_P010 + 8 * 2 * 2 + 4 * 2);
+    colorspace_convert<P010, YUV444, BT_601> ( info );
+    print_planar( info ) ;
+
+
+    /*
+    std::cout << "YUV422 to P210-------------------------\n";
     set_meta <YUV422, P210 >(info, 8, 2, test_yuv422p_bt601, test_yuv422p_bt601 + 8 * 2, test_yuv422p_bt601 + 8 * 2 + 4 * 2);
     colorspace_convert<YUV422, P210, BT_601> (info);
     print_planar( info ) ;

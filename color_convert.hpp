@@ -4,13 +4,15 @@
 #define IS_RGB(cs) (cs == RGB24 || cs == A2R10G10B10)
 #define IS_YUV(cs) (cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY || cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == YV16 || cs == YUV422 || cs == P210 || cs == P010)
 #define IS_8BIT(cs) (cs == RGB24 || cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY || cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == YV16 || cs == YUV422)
-#define IS_10BIT(cs) (cs == A2R10G10B10 || cs == P210 || cs == P010 || cs == Y210)
+#define IS_10BIT(cs) (cs == A2R10G10B10 || cs == P210 || cs == P010 || cs == Y210 || cs == V210)
 #define IS_INTERLEAVED(cs) (cs == A2R10G10B10 ||  cs == RGB24 || cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY)
 #define IS_PLANAR(cs) (cs == YV12 || cs == I420 || cs == YV16)
 #define IS_SEMIPLANAR( cs ) (cs == NV21 || cs == NV12)
-#define IS_YUV422( cs ) (cs == YUYV || cs == YVYU || cs == UYVY || cs == YV16 || cs == YUV422 || cs == P210 || cs == YV16 || cs == Y210 )
+#define IS_YUV422( cs ) (cs == YUYV || cs == YVYU || cs == UYVY || cs == YV16 || cs == YUV422 || cs == P210 || cs == YV16 || cs == Y210 || cs == V210)
 #define IS_YUV420( cs ) (cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == P010)
 #define IS_YUV444( cs ) (cs == YUV444)
+
+
 #define SHIFT_LEFT 1
 #define SHIFT_RIGHT 0
 
@@ -30,26 +32,30 @@ namespace ColorspaceConverter {
 
 enum Colorspace
 {
-//  name       pack     order       size
-    YUV444, // Composite Y->U->V    (4:4:4)
+ //  name       pack     order       size
+
     YUYV,   // Composite Y->U->Y->V (4:2:2)
     YUY2 = YUYV,   // Composite Y->U->Y->V (4:2:2) (duplicate)
     YVYU,   // Composite Y->V->Y->U (4:2:2)
     UYVY,   // Composite U->Y->V->Y (4:2:2)
     Y210,   // Composite Y->U->Y->V (4:2:2) (10 bit p/s)
 
+    RGB24,  // Standart interleaved RGB
+    A2R10G10B10, // Interleaved BGR  (10 bit)
+
     NV21,   // Planar Y, merged V->U (4:2:0)
     NV12,   // Planar Y, merged U->V (4:2:0)
     P210,   // Planar Y, merged V->U (4:2:2)  10 bit
     P010,   // Planar Y, merged V->U (4:2:0)  10-bit
 
+    YUV444, // Planar Y->U->V (4:4:4)
     YV12,   // Planar Y, V, U (4:2:0)
     I420,   // Planar Y, U, V (4:2:0)
+    IYUV = I420,   // Planar Y, U, V (4:2:0) (duplicate)
     YV16,   // Planar Y, V, U (4:2:2)
     YUV422, // Planar Y, U, V (4:2:2)
-    V210,   // Interleaved, 12  10bit values packed in 128bit
-    RGB24,
-    A2R10G10B10 // 32bit
+
+    V210,   // Interleaved YUV422, 12  10bit values packed in 128bit
 };
 enum Standard
 {
@@ -214,6 +220,11 @@ template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& 
     {
         posa = cur_pos * 2 * 2;
     }
+    if(cs == V210)
+    {
+        posa = cur_pos * 16 / 6;
+    }
+
     // TODO add new formats
         /*
         if(pack == SemiPlanar){
@@ -295,13 +306,6 @@ template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs
        res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
     }
 }
-/*
-static inline void unpack_V210(Context& ctx, uint32_t vala, uint32_t valb, uint32_t valc, uint32_t vald)
-{
-    ctx.a1 =;
-
-}
-*/
 static inline void unpack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
 {
     uint32_t data1 = ctx1.a1;
@@ -347,59 +351,40 @@ static inline void unpack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
     ctx3.a4 = (data4 >> 20) & 0X3FF;
 
 }
-
+static inline uint32_t pack10_in_int(int32_t a, int32_t b, int32_t c)
+{
+    // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
+    return ((a & 0X3FF) << 20) | ((b & 0X3FF) << 10) | (c & 0X3FF);
+}
 
 static inline void pack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
 {
-    uint32_t data1 = 0, data2 = 0, data3 = 0, data4  = 0;
+    //YUV422
+    // Y0 U0 Y1 V0      Y2 U1 Y3 V1     Y4 U2 Y5 V2
 
-    data1 = ((ctx1.c1 & 0X3FF) << 20) | ((ctx1.a1 & 0X3FF) << 10) | (ctx1.b1 & 0X3FF) ;
-    data2 = ((ctx2.a1 & 0X3FF) << 20) | ((ctx2.b1 & 0X3FF) << 10) | (ctx1.a2 & 0X3FF) ;
-    data3 = ((ctx3.b1 & 0X3FF) << 20) | ((ctx2.a2 & 0X3FF) << 10) | (ctx2.c1 & 0X3FF) ;
-    data4 = ((ctx3.a2 & 0X3FF) << 20) | ((ctx3.c1 & 0X3FF) << 10) | (ctx3.a1 & 0X3FF) ;
+    // v210:
+    // V0 Y0 U0 - w1
+    // Y2 U1 Y1 - w2
+    // U2 Y3 V1 - w3
+    // Y5 V2 Y4 - w4
 
-    ctx1.a1 = data1;
-    ctx1.b1 = data2;
-    ctx1.a2 = data3;
-    ctx1.b2 = data4;
+    ctx1.a1 = pack10_in_int( ctx1.c1, ctx1.a1, ctx1.b1 );
+    ctx1.b1 = pack10_in_int( ctx2.a1, ctx2.b1, ctx1.a2 );
+    ctx1.a2 = pack10_in_int( ctx3.b1, ctx2.a2, ctx2.c1 );
+    ctx1.b2 = pack10_in_int( ctx3.a2, ctx3.c1, ctx3.a1 );
 
-    data1 = 0;
-    data2 = 0;
-    data3 = 0;
-    data4 = 0;
-
-    data1 = ((ctx1.c3 & 0X3FF) << 20) | ((ctx1.a3 & 0X3FF) << 10) | (ctx1.b3 & 0X3FF) ;
-    data2 = ((ctx2.a3 & 0X3FF) << 20) | ((ctx2.b3 & 0X3FF) << 10) | (ctx1.a4 & 0X3FF) ;
-    data3 = ((ctx3.b3 & 0X3FF) << 20) | ((ctx2.a4 & 0X3FF) << 10) | (ctx2.c3 & 0X3FF) ;
-    data4 = ((ctx3.a4 & 0X3FF) << 20) | ((ctx3.c3 & 0X3FF) << 10) | (ctx3.a3 & 0X3FF) ;
-
-    ctx1.a3 = data1;
-    ctx1.b3 = data2;
-    ctx1.a4 = data3;
-    ctx1.b4 = data4;
-
+    ctx1.a3 = pack10_in_int( ctx1.c3, ctx1.a3, ctx1.b3 );
+    ctx1.b3 = pack10_in_int( ctx2.a3, ctx2.b3, ctx1.a4 );
+    ctx1.a4 = pack10_in_int( ctx3.b3, ctx2.a4, ctx2.c3 );
+    ctx1.b4 = pack10_in_int( ctx3.a4, ctx3.c3, ctx3.a3 );
 }
 
-static inline void unpack_A2R10G10B10(int32_t& vala, int32_t& valb, int32_t& valc, const uint32_t buf)
+static inline void unpack10_from_int(int32_t& vala, int32_t& valb, int32_t& valc, const uint32_t buf)
 {
-            //in memory
-            // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
-            //TO DO define R_FROM_A2R10G10 e.t.c
-            // in register
-            // bbbbbbbb bbgggggg ggggrrrr rrrrrraa
-          /*
-            // red
-            vala = (( (buf >> 16) & (0xF)) << 6 ) |  ((buf >> 26) & (0x3F));
-
-            //green
-            valb = (( (buf >> 8) & (0x3F) )<< 4) | ((buf >> 20) & (0xF));
-
-            //blue
-            valc =  ((buf & 0xFF) << 2) | (( buf >> 14) & (0x3));
-          */
-            vala = (buf >> 2) & 0x3FF;
-            valb = (buf >> 12) & 0x3FF;
-            valc = (buf >> 22) & 0x3FF;
+            // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
+            valc = (buf) & 0x3FF;
+            valb = (buf >> 10) & 0x3FF;
+            vala = (buf >> 20) & 0x3FF;
 
 
 }
@@ -489,11 +474,10 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
     }
     if(cs == A2R10G10B10)
     {
-        // Optimize ???
-        memcpy( &ctx.a1, srca,4);
-        memcpy( &ctx.a2, srca + 4,4);
-        memcpy( &ctx.a3, src_na,4);
-        memcpy( &ctx.a4, src_na + 4,4);
+        ctx.a1 = *(uint32_t*)(srca);
+        ctx.a2 = *(uint32_t*)(srca + 4);
+        ctx.a3 = *(uint32_t*)(src_na);
+        ctx.a4 = *(uint32_t*)(src_na + 4);
     }
     if(cs == I420 || cs == YV12)
     {
@@ -502,7 +486,6 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
         ctx.a3 = src_na[0];
         ctx.a4 = src_na[1];
     }
-
     if(cs == I420)
     {
         ctx.b1 = srcb[0];
@@ -566,7 +549,6 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
     }
     if(cs == P210 || cs == P010)
     {
-        // TODO OPTIMIZE
         ctx.a1 = *(uint16_t*)(srca);
         ctx.a2 = *(uint16_t*)(srca + 2);
         ctx.a3 = *(uint16_t*)(src_na);
@@ -582,17 +564,15 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
     }
     if(cs == V210)
     {
-        // TODO OPTIMIZE
-        memcpy( &ctx.a1, srca, 4);
-        memcpy( &ctx.b1, srca + 4, 4);
-        memcpy( &ctx.a2, srca + 8, 4);
-        memcpy( &ctx.b2, srca + 12, 4);
+        ctx.a1 = *(uint32_t*)(srca);
+        ctx.b1 = *(uint32_t*)(srca + 4);
+        ctx.a2 = *(uint32_t*)(srca + 8);
+        ctx.b2 = *(uint32_t*)(srca + 12);
 
-        memcpy( &ctx.a3, src_na, 4);
-        memcpy( &ctx.b3, src_na + 4, 4);
-        memcpy( &ctx.a4, src_na + 8, 4);
-        memcpy( &ctx.b4, src_na + 12, 4);
-
+        ctx.a3 = *(uint32_t*)(src_na);
+        ctx.b3 = *(uint32_t*)(src_na + 4);
+        ctx.a4 = *(uint32_t*)(src_na + 8);
+        ctx.b4 = *(uint32_t*)(src_na + 12);
     }
 }
     /*
@@ -736,27 +716,32 @@ template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, cons
 	}
     */
 
-
-static inline uint32_t pack_A2R10G10B10(int32_t vala, int32_t valb, int32_t valc)
+template < Colorspace cs> inline void unpack_finish (Context& ctx)
 {
-    // rrrrrraa ggggrrrr bbgggggg bbbbbbbb
-    // bbbbbbbb bbgggggg ggggrrrr rrrrrrAA
-    int32_t res;
-    /*
-    res = 3l << 24;
-    res |= (vala & 0x3F) << 26;
-    res |= ( (vala >> 6) & 0xF) << 16;
+    if(IS_YUV422( cs ))
+    {
+        ctx.c2 = ctx.c1;
+        ctx.b2 = ctx.b1;
 
-    res |= (valb & 0xF) << 20;
-    res |= ( (valb >> 4) & 0X3F) << 8;
+        ctx.c4 = ctx.c3;
+        ctx.b4 = ctx.b3;
 
-    res |= (valc & 0x3) << 14;
-    res |= (valc >> 2) & 0XFF;
-    */
-    res = ((valc & 0X3FF) << 22) | ((valb & 0X3FF) << 12) | ((vala & 0X3FF) << 2) | 3;
-    return res;
+    }
+    if(IS_YUV420( cs ))
+    {
+        ctx.b2 = ctx.b1;
+        ctx.c2 = ctx.c1;
+
+        ctx.b3 = ctx.b1;
+        ctx.c3 = ctx.c1;
+
+        ctx.b4 = ctx.b1;
+        ctx.c4 = ctx.c1;
+    }
+
 }
-template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Context& ctx3)
+
+template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Context& ctx3 )
 {
 
     if(cs == Y210 || cs == P210 || cs == P010)
@@ -779,35 +764,20 @@ template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Conte
     if(cs == V210)
     {
         unpack_V210(ctx, ctx2, ctx3);
+        unpack_finish< cs >( ctx );
+        unpack_finish< cs >( ctx2 );
+        unpack_finish< cs >( ctx3 );
+        return;
     }
     if(cs == A2R10G10B10)
     {
-        unpack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1, ctx.a1);
-        unpack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2, ctx.a2);
-        unpack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3, ctx.a3);
-        unpack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4, ctx.a4);
+        unpack10_from_int(ctx.c1, ctx.b1, ctx.a1, ctx.a1 >> 2);
+        unpack10_from_int(ctx.c2, ctx.b2, ctx.a2, ctx.a2 >> 2);
+        unpack10_from_int(ctx.c3, ctx.b3, ctx.a3, ctx.a3 >> 2);
+        unpack10_from_int(ctx.c4, ctx.b4, ctx.a4, ctx.a4 >> 2);
     }
 
-    if(IS_YUV422( cs ))
-    {
-        ctx.c2 = ctx.c1;
-        ctx.b2 = ctx.b1;
-
-        ctx.c4 = ctx.c3;
-        ctx.b4 = ctx.b3;
-    }
-    if(IS_YUV420( cs ))
-    {
-        ctx.b2 = ctx.b1;
-        ctx.c2 = ctx.c1;
-
-        ctx.b3 = ctx.b1;
-        ctx.c3 = ctx.c1;
-
-        ctx.b4 = ctx.b1;
-        ctx.c4 = ctx.c1;
-    }
-
+    unpack_finish < cs >( ctx );
 }
 
     /*
@@ -1054,6 +1024,19 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
         memcpy(dst_nb + 2, &ctx.c3, 2);
 
     }
+    if(cs == V210)
+    {
+        memcpy(dsta, &ctx.a1, 4);
+        memcpy(dsta + 4, &ctx.b1, 4);
+        memcpy(dsta + 8, &ctx.a2, 4);
+        memcpy(dsta + 12, &ctx.b2, 4);
+
+
+        memcpy(dst_na, &ctx.a3, 4);
+        memcpy(dst_na + 4, &ctx.b3, 4);
+        memcpy(dst_na + 8, &ctx.a4, 4);
+        memcpy(dst_na + 12, &ctx.b4, 4);
+    }
 }
         /*
     if (pack == Interleaved)
@@ -1192,9 +1175,8 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
 	}
     */
 
-template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Context& ctx3 = 0)
+template <Colorspace cs> inline void pack_init(Context& ctx)
 {
-
     if(IS_YUV422( cs ))
     {
         ctx.b1 = ctx.b2 =  (ctx.b1 + ctx.b2) / 2;
@@ -1207,6 +1189,21 @@ template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Conte
         ctx.b1 = (ctx.b1 + ctx.b2 + ctx.b3 + ctx.b4) / 4;
         ctx.c1 = (ctx.c1 + ctx.c2 + ctx.c3 + ctx.c4) / 4;
     }
+
+}
+
+template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Context& ctx3 = 0)
+{
+    if(cs == V210)
+    {
+        pack_init < cs >( ctx );
+        pack_init < cs >( ctx2 );
+        pack_init < cs >( ctx3 );
+        pack_V210(ctx, ctx2, ctx3);
+        return;
+    }
+
+    pack_init < cs >( ctx );
     if(cs == Y210 || cs == P210 || cs == P010)
     {
         ctx.a1 <<= 6;
@@ -1226,15 +1223,12 @@ template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Conte
 
     if(cs == A2R10G10B10)
     {
-        ctx.a1 = pack_A2R10G10B10(ctx.a1, ctx.b1, ctx.c1);
-        ctx.a2 = pack_A2R10G10B10(ctx.a2, ctx.b2, ctx.c2);
-        ctx.a3 = pack_A2R10G10B10(ctx.a3, ctx.b3, ctx.c3);
-        ctx.a4 = pack_A2R10G10B10(ctx.a4, ctx.b4, ctx.c4);
+        ctx.a1 = (pack10_in_int(ctx.c1, ctx.b1, ctx.a1) << 2) | 3;
+        ctx.a2 = (pack10_in_int(ctx.c2, ctx.b2, ctx.a2) << 2) | 3;
+        ctx.a3 = (pack10_in_int(ctx.c3, ctx.b3, ctx.a3) << 2) | 3;
+        ctx.a4 = (pack10_in_int(ctx.c4, ctx.b4, ctx.a4) << 2) | 3;
     }
-    if(cs == V210)
-    {
-        pack_V210(ctx, ctx2, ctx3);
-    }
+
 }
 
 template <class T > inline T clip(T val_a, T min, T max)

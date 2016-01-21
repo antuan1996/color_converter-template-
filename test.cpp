@@ -1,5 +1,5 @@
 //#define ENABLE_LOG
-
+#define pack_A2R10G10B10(a, b, c) ((pack10_in_int(c, b, a) << 2) | 3)
 
 #include <string>
 #include <iostream>
@@ -152,7 +152,7 @@ int check( uint8_t* a, uint8_t* b, int len )
     for( size_t x = 0 ; x < uint(len) ; ++x )
     {
         #ifdef ENABLE_LOG
-            std::cout << a[ x ] << " x " << b  [ x ] << "\n";
+            std::cout << int(a[ x ]) << " x " << int(b[ x ]) << "\n";
         #endif
         res += abs( a[ x ] - b[ x ] );
     }
@@ -222,6 +222,7 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
     }
     if(from_cs == V210)
     {
+        // TODO align on 48 pixels
         meta.src_stride[ 0 ] = width * 16 / 6;
     }
 
@@ -232,6 +233,11 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
         meta.dst_stride_horiz[ 0 ] = width * 3;
         meta.dst_stride_vert[0] = height;
 
+    }
+    if(to_cs == A2R10G10B10)
+    {
+         meta.dst_stride_horiz[ 0 ] = width * 4;
+         meta.dst_stride_vert[ 0 ] = height;
     }
     if(to_cs == YUV444)
     {
@@ -303,14 +309,13 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
         meta.dst_stride_vert[ 0 ] = height;
         meta.dst_stride_vert[ 1 ] = height / 2;
     }
-
-
     if(to_cs == V210)
     {
          meta.dst_stride_horiz[ 0 ] = width * 16 / 6;
          meta.dst_stride_vert[ 0 ] = height;
 
     }
+
     int siz = 0;
     siz += meta.dst_stride_horiz[ 0 ] * meta.dst_stride_vert[ 0 ];
     siz += meta.dst_stride_horiz[ 1 ] * meta.dst_stride_vert[ 1 ];
@@ -334,16 +339,6 @@ static int syntetic_test()
 		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
         16,128,     16,128,    210,16,  210,146,   170,166,  170,16,  106,202, 106,222
 	};
-	 static uint8_t test_yuv444s_bt601[(8 * 2) + 8 * 2 * 2] =
-	{
-        235, 81, 145, 41, 16, 210, 170, 106,
-        107, 157, 74, 178, 94, 147, 115, 95,
-
-        128, 128,   90, 240,    54, 34,     240, 110,   128,128,    16,146,     166,16,     202,222,
-        202,62,     111,25,     221,167,    34,92,      147,231,    52,192,     71,137,     147,71
-
-	};
-
     static uint8_t test_yuv444p_bt601[(8 * 2) * 3] =
 	{
 		// Y
@@ -375,10 +370,15 @@ static int syntetic_test()
     };
     static uint32_t test_A2R10G10B10_bt601[(8 * 2)] =
     {
-        pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),    pack_A2R10G10B10(0x3FF, 0,0),      pack_A2R10G10B10(0, 0x3FF, 0),     pack_A2R10G10B10(0, 0, 0x3FF),
-        pack_A2R10G10B10(0x3FF, 0x3FF, 0),        pack_A2R10G10B10(0, 0x3FF, 0x3FF), pack_A2R10G10B10(0x3FF, 0, 0x3FF), pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),
-        pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),    pack_A2R10G10B10(0x3FF, 0,0),      pack_A2R10G10B10(0, 0x3FF, 0),     pack_A2R10G10B10(0, 0, 0x3FF),
-        pack_A2R10G10B10(0x3FF, 0x3FF, 0),        pack_A2R10G10B10(0, 0x3FF, 0x3FF), pack_A2R10G10B10(0x3FF, 0, 0x3FF), pack_A2R10G10B10(0x3FF, 0x3FF, 0x3FF),
+        pack_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),    pack_A2R10G10B10(0x3FC, 0,0),      pack_A2R10G10B10(0, 0x3FC, 0),     pack_A2R10G10B10(0, 0, 0x3FC),
+        pack_A2R10G10B10(0x3FC, 0x3FC, 0),        pack_A2R10G10B10(0, 0x3FC, 0x3FC), pack_A2R10G10B10(0x3FC, 0, 0x3FC), pack_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),
+        pack_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),    pack_A2R10G10B10(0x3FC, 0,0),      pack_A2R10G10B10(0, 0x3FC, 0),     pack_A2R10G10B10(0, 0, 0x3FC),
+        pack_A2R10G10B10(0x3FC, 0x3FC, 0),        pack_A2R10G10B10(0, 0x3FC, 0x3FC), pack_A2R10G10B10(0x3FC, 0, 0x3FC), pack_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),
+    };
+    static uint8_t test_RGB24_to_A2R10G10B10 [8 * 3 * 2] =
+    {
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
     };
 
 	static uint8_t test_yuv444p_bt2020[(8 * 2) * 3] =
@@ -395,25 +395,6 @@ static int syntetic_test()
 		128, 240, 25, 119, 128, 137, 16, 231,
         66, 20, 176, 82, 235, 187, 133, 71
 	};
-
-
-    static uint8_t test_yuv444i_bt601[(8 * 2) * 3] =
-	{
-		235, 128, 128,      81, 90, 240,     145, 54, 34,    41, 240, 110,   16,128,128,    210,16,146,     170,166,16,      106,202,222,
-        107,202,62,         157,111,25,      74,221,167,     178,34,92,      94,147,231,    147,52,192,     115,71,137,      95,147,71
-	};
-
-    static uint8_t test_rgb_to_yuv422[(8 * 2) * 3] =
-    {
-        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255,
-        0,0,0,     0,0,0,     255,255,0,   255,255,0,   0,255,255,  0,255,255,   255,0,255,    255,0,255
-    };
-
-    static uint8_t test_rgb_to_yuv420[(8 * 2) * 3] =
-	{
-        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255,
-        255,255,255,  255,255,255,  255,0,0,    255,0,0,    0,255,0,   0,255,0,    0,0,255,     0,0,255
-    };
 
     static uint8_t test_yuv422p_bt601[(8 * 2) + 8 + 8] =
     {
@@ -439,22 +420,12 @@ static int syntetic_test()
 
     };
 
-    static uint8_t test_rgbn[(8 * 2) * 3] =
-	{
-        235,235,235,  235,16,16,  16,235,16,   16,16,235,  16,16,16,    235,235,16,  16,235,235,  235,16,235,
-        16,128,235,   16,235,128, 128,16,235,  128,235,16, 235,16,128,  235,128,16,  128,128,16,  16,128,128
-    };
     static uint8_t test_rgbf[(8 * 2) * 3] =
     {
         255,255,255,  255,0,0,  0,255,0,   0,0,255,  0,0,0,    255,255,0,  0,255,255,  255,0,255,
         0,128,255,   0,255,128, 128,0,255,  128,255,0, 255,0,128,  255,128,0,  128,128,0,  0,128,128
     };
 
-    static uint8_t test_rgb24_to_A2R10G10B10[(8 * 2) * 3] =
-    {
-        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
-        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
-    };
     static uint16_t test_P210[ 8 * 2 + 4 * 2 + 4 * 2 ]
     {
         940 << 6, 940 << 6, 324 << 6, 324 << 6, 580 << 6, 580 << 6, 164 << 6, 164 << 6,
@@ -485,6 +456,30 @@ static int syntetic_test()
 
         128, 128, 240, 240, 34, 34, 110, 110,
         128, 128, 240, 240, 34, 34, 110, 110,
+
+    };
+    static uint32_t test_V210[ 4 * 2 ]
+    {
+        pack10_in_int( 512, 940, 512 ),
+        pack10_in_int( 324, 360, 940 ),
+        pack10_in_int( 216, 324, 960 ),
+        pack10_in_int( 580, 136, 580 ),
+
+        pack10_in_int( 512, 940, 512 ),
+        pack10_in_int( 324, 360, 940 ),
+        pack10_in_int( 216, 324, 960 ),
+        pack10_in_int( 580, 136, 580 )
+    };
+    static uint8_t test_yuv444p_to_V210[ 3 * 6 * 2]
+    {
+        235, 235,    81,81, 145, 145,
+        235, 235,    81,81, 145, 145,
+
+        128, 128,   90, 90,   54, 54,
+        128, 128,   90, 90,   54, 54,
+
+        128, 128, 240, 240,   34, 34,
+        128, 128, 240, 240,   34, 34
 
     };
     static uint8_t test_yuv444p_to_yuv422[ 3 * 8 * 2]
@@ -639,6 +634,11 @@ static int syntetic_test()
     colorspace_convert<Y210, YUV444, BT_601> ( info );
     print_planar( info ) ;
 
+    std::cout << "V210 to YUV444-------------------------\n";
+    set_meta <V210, YUV444 >(info, 6, 2, (uint8_t*)test_V210);
+    colorspace_convert<V210, YUV444, BT_601> ( info );
+    print_planar( info ) ;
+
 //*****************************************************************
     std::cout << "YUV444 to P010-------------------------\n";
     set_meta <YUV444, P010 >(info, 8, 2, test_yuv444p_to_yuv420, test_yuv444p_to_yuv420 + 8 * 2, test_yuv444p_to_yuv420 + 8 * 2 + 8 * 2 );
@@ -652,11 +652,17 @@ static int syntetic_test()
     print_planar( info ) ;
     std::cout << "Diff is " << check( (uint8_t*)(test_P210), info.dst_data[ 0 ], 8 * 2 * 2 + 8 * 2 * 2 ) << "\n";
 
-    std::cout << "YUV444 to Y210-------------------------\n";
-    set_meta <YUV444, Y210 >(info, 8, 2, test_yuv444p_to_yuv422, test_yuv444p_to_yuv422 + 8 * 2, test_yuv444p_to_yuv422 + 8 * 2 + 8 * 2 );
-    colorspace_convert<YUV444, Y210, BT_601> ( info );
+    std::cout << "YUV444 to V210-------------------------\n";
+    set_meta <YUV444, V210 >(info, 6, 2, test_yuv444p_to_V210, test_yuv444p_to_V210 + 6 * 2, test_yuv444p_to_V210 + 6 * 2 + 6 * 2 );
+    colorspace_convert<YUV444, V210, BT_601> ( info );
     print_planar( info ) ;
-    std::cout << "Diff is " << check( (uint8_t*)(test_Y210), info.dst_data[ 0 ], 8 * 2 * 2 + 8 * 2 * 2 ) << "\n";
+    std::cout << "Diff is " << check( (uint8_t*)(test_V210), info.dst_data[ 0 ], 16 + 16 ) << "\n";
+
+    std::cout << "RGB24 to A2R10G10B10 interleaved\n";
+    set_meta <RGB24, A2R10G10B10>(info, 8, 2, test_RGB24_to_A2R10G10B10);
+    colorspace_convert<RGB24, A2R10G10B10, BT_601> ( info );
+    print_planar( info );
+    std::cout << "Diff is " << check( (uint8_t*)(test_A2R10G10B10_bt601), info.dst_data[ 0 ], 8 * 4 * 2 ) << "\n";
 
 
     /*

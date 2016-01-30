@@ -1,74 +1,9 @@
 #ifndef COLOR_CONVERT
 #define COLOR_CONVERT
 
-#define IS_RGB(cs) (cs == RGB24 || cs == BGR24 || cs == A2R10G10B10 || cs ==  A2B10G10R10 || cs == RGB32 || cs == BGR32)
-#define IS_YUV(cs) (cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY || cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == YV16 || cs == YUV422 || cs == P210 || cs == P010)
-#define IS_8BIT(cs) (cs == RGB24 || cs == BGR24|| cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY || cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == YV16 || cs == YUV422)
-#define IS_10BIT(cs) (cs == A2B10G10R10 || cs == A2R10G10B10 || cs == P210 || cs == P010 || cs == Y210 || cs == V210)
-#define IS_INTERLEAVED(cs) (cs == RGB24 || cs == BGR24 || cs == A2R10G10B10 || cs ==  A2B10G10R10 || cs == RGB32 || cs == BGR32 || cs == YUV444 || cs == YUYV || cs == YVYU || cs == UYVY || cs == V210)
-#define IS_PLANAR(cs) (cs == YV12 || cs == I420 || cs == YV16)
-#define IS_SEMIPLANAR( cs ) (cs == NV21 || cs == NV12)
-#define IS_YUV422( cs ) (cs == YUYV || cs == YVYU || cs == UYVY || cs == YV16 || cs == YUV422 || cs == P210 || cs == YV16 || cs == Y210 || cs == V210)
-#define IS_YUV420( cs ) (cs == NV21 || cs == NV12 || cs == YV12 || cs == I420 || cs == P010)
-#define IS_YUV444( cs ) (cs == YUV444)
-
-
-#define SHIFT_LEFT 1
-#define SHIFT_RIGHT 0
-
-
-
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-
-#include <iostream>
-#include <sstream>
-
-#include <assert.h>
-
-namespace ColorspaceConverter {
-
-enum Colorspace
+#include "common.hpp"
+namespace ColorspaceConverter
 {
- //  name       pack     order       size
-
-    YUYV,   // Interleaved Y->U->Y->V (4:2:2)
-    YUY2 = YUYV,   // Interleaved Y->U->Y->V (4:2:2) (duplicate)
-    YVYU,   // Interleaved Y->V->Y->U (4:2:2)
-    UYVY,   // Interleaved U->Y->V->Y (4:2:2)
-    Y210,   // Interleaved Y->U->Y->V (4:2:2) (10 bit p/s)
-
-    RGB24,  // Standart interleaved RGB(8x8x8)
-    BGR24,  // Interleaved BGR(8x8x8)
-    RGB32,  // Interleaved RGBX(8x8x8x8)
-    BGR32,  // Interleaved BGRX(8x8x8x8)
-
-    A2R10G10B10, // Interleaved A(2 bit ) R(10bit) G(10bit) B(10 bit)
-    A2B10G10R10, // Interleaved A(2 bit ) B(10bit) G(10bit) R(10 bit)
-
-    NV21,   // Planar Y, merged V->U (4:2:0)
-    NV12,   // Planar Y, merged U->V (4:2:0)
-    P210,   // Planar Y, merged V->U (4:2:2)  10 bit
-    P010,   // Planar Y, merged V->U (4:2:0)  10-bit
-
-    YUV444, // Planar Y->U->V (4:4:4)
-    YV12,   // Planar Y, V, U (4:2:0)
-    I420,   // Planar Y, U, V (4:2:0)
-    IYUV = I420,   // Planar Y, U, V (4:2:0) (duplicate)
-    YV16,   // Planar Y, V, U (4:2:2)
-    YUV422, // Planar Y, U, V (4:2:2)
-
-    V210,   // Interleaved YUV422, 12  10bit values packed in 128bit
-};
-enum Standard
-{
-	BT_601,
-	BT_709,
-	BT_2020
-};
-
 /*
  * p1 p2
  * p3 p4
@@ -157,18 +92,18 @@ static const int32_t k_bt2020_YUV_to_RGB[3 * 3] =
     257, 471, 0
 };
 
-template <Colorspace from, Colorspace to> inline void scale(int32_t& val_a, int32_t& val_b, int32_t& val_c)
+template <Colorspace from_cs, Colorspace to_cs> inline void scale(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
-    if( (IS_8BIT(from) &&(IS_8BIT(to))) || (IS_10BIT(from) && IS_10BIT(to)) )
+    if( (IS_8BIT(from_cs) &&(IS_8BIT(to_cs))) || (IS_10BIT(from_cs) && IS_10BIT(to_cs)) )
         return;
-    if(IS_8BIT(from) && IS_10BIT(to))
+    if(IS_8BIT(from_cs) && IS_10BIT(to_cs))
     {
         val_a <<= 2;
         val_b <<= 2;
         val_c <<= 2;
         return;
     }
-    if(IS_10BIT(from) && IS_8BIT(to))
+    if(IS_10BIT(from_cs) && IS_8BIT(to_cs))
     {
         val_a >>= 2;
         val_b >>= 2;
@@ -269,8 +204,13 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
     {
         meta.dst_stride_horiz[ 0 ] = width * 3;
         meta.dst_stride_vert[0] = height;
-
     }
+    if(to_cs == RGB32)
+    {
+        meta.dst_stride_horiz[ 0 ] = width * 4;
+        meta.dst_stride_vert[0] = height;
+    }
+
     if(to_cs == A2R10G10B10)
     {
          meta.dst_stride_horiz[ 0 ] = width * 4;
@@ -427,35 +367,35 @@ template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& 
 }
 
 // TO DO new transform matrix
-template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs(int32_t* res_matrix)
+template <Colorspace from_cs, Colorspace to_cs, Standard st> void set_transform_coeffs(int32_t* res_matrix)
 {
    const int32_t* matrix = e_matrix;
 	if (st == BT_601) {
-        if ( IS_RGB( from ) && IS_YUV( to ) ) {
+        if ( IS_RGB( from_cs ) && IS_YUV( to_cs ) ) {
 			matrix =  k_bt601_RGB_to_YUV;
 		}
         else
-        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
+        if ( IS_YUV( from_cs ) &&  IS_RGB( to_cs ) ) {
 			matrix =  k_bt601_YUV_to_RGB;
 		}
 	}
     else
     if (st == BT_709) {
-        if ( IS_RGB( from ) && IS_YUV( to ) ) {
+        if ( IS_RGB( from_cs ) && IS_YUV( to_cs ) ) {
             matrix =  k_bt709_RGB_to_YUV;
         }
         else
-        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
+        if ( IS_YUV( from_cs ) &&  IS_RGB( to_cs ) ) {
             matrix =  k_bt709_YUV_to_RGB;
         }
 	}
     else
     if (st == BT_2020) {
-        if ( IS_RGB( from ) && IS_YUV( to ) ) {
+        if ( IS_RGB( from_cs ) && IS_YUV( to_cs ) ) {
             matrix =  k_bt2020_RGB_to_YUV;
         }
         else
-        if ( IS_YUV( from ) &&  IS_RGB( to ) ) {
+        if ( IS_YUV( from_cs ) &&  IS_RGB( to_cs ) ) {
             matrix =  k_bt2020_YUV_to_RGB;
         }
     }
@@ -517,6 +457,11 @@ static inline uint32_t pack10_in_int(int32_t a, int32_t b, int32_t c)
     // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
     return ((a & 0X3FF) << 20) | ((b & 0X3FF) << 10) | (c & 0X3FF);
 }
+static inline uint32_t pack8_in_int(int32_t a, int32_t b, int32_t c, int32_t d)
+{
+    // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
+    return ((a & 0XFF) << 24) | ((b & 0XFF) << 16) | (c & 0XFF) << 8 | ( d & 0XFF );
+}
 
 static inline void pack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
 {
@@ -542,10 +487,10 @@ static inline void pack_V210(Context& ctx1, Context& ctx2, Context& ctx3)
 
 static inline void unpack10_from_int(int32_t& vala, int32_t& valb, int32_t& valc, const uint32_t buf)
 {
-            // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
-            valc = (buf) & 0x3FF;
-            valb = (buf >> 10) & 0x3FF;
-            vala = (buf >> 20) & 0x3FF;
+    // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
+    valc = (buf) & 0x3FF;
+    valb = (buf >> 10) & 0x3FF;
+    vala = (buf >> 20) & 0x3FF;
 }
 template < Colorspace cs> inline void load(ConvertMeta& meta, Context& ctx, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
 {
@@ -837,17 +782,17 @@ template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Conte
     }
     if(cs == A2R10G10B10)
     {
-        unpack10_from_int(ctx.a1, ctx.b1, ctx.c1, ctx.a1);
-        unpack10_from_int(ctx.a2, ctx.b2, ctx.c2, ctx.a2);
-        unpack10_from_int(ctx.a3, ctx.b3, ctx.c3, ctx.a3);
-        unpack10_from_int(ctx.a4, ctx.b4, ctx.c4, ctx.a4);
+        unpack10_from_int(ctx.a1, ctx.b1, ctx.c1,   ctx.a1);
+        unpack10_from_int(ctx.a2, ctx.b2, ctx.c2,   ctx.a2);
+        unpack10_from_int(ctx.a3, ctx.b3, ctx.c3,   ctx.a3);
+        unpack10_from_int(ctx.a4, ctx.b4, ctx.c4,   ctx.a4);
     }
     if(cs == A2B10G10R10)
     {
-        unpack10_from_int(ctx.c1, ctx.b1, ctx.a1, ctx.a1);
-        unpack10_from_int(ctx.c2, ctx.b2, ctx.a2, ctx.a2);
-        unpack10_from_int(ctx.c3, ctx.b3, ctx.a3, ctx.a3);
-        unpack10_from_int(ctx.c4, ctx.b4, ctx.a4, ctx.a4);
+        unpack10_from_int(ctx.c1, ctx.b1, ctx.a1,   ctx.a1);
+        unpack10_from_int(ctx.c2, ctx.b2, ctx.a2,   ctx.a2);
+        unpack10_from_int(ctx.c3, ctx.b3, ctx.a3,   ctx.a3);
+        unpack10_from_int(ctx.c4, ctx.b4, ctx.a4,   ctx.a4);
     }
 
     unpack_finish < cs > ( ctx );
@@ -1024,7 +969,7 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     }
     if(cs == Y210)
     {
-        //TODO Optimize
+
         memcpy(dsta, &ctx.a1, 2);
         memcpy(dsta + 2, &ctx.b1, 2);
         memcpy(dsta + 4, &ctx.a2, 2);
@@ -1037,7 +982,6 @@ template < Colorspace cs > inline void store(const ConvertMeta& meta, Context& c
     }
     if(cs == P210 || cs == P010)
     {
-        // TODO OPTIMIZE
         // register b4 b3 b2 b1
         // memory   b1 b2 b3 b4
         memcpy(dsta, &ctx.a1, 2);
@@ -1114,17 +1058,19 @@ template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Conte
     }
     if(cs == RGB32)
     {
-        ctx.a1 = pack10_in_int(ctx.a1, ctx.b1, ctx.c1) << 10 ;
-        ctx.a2 = pack10_in_int(ctx.a2, ctx.b2, ctx.c2) << 10 ;
-        ctx.a3 = pack10_in_int(ctx.a3, ctx.b3, ctx.c3) << 10 ;
-        ctx.a4 = pack10_in_int(ctx.a4, ctx.b4, ctx.c4) << 10 ;
+        //reg  R G B X
+        //mem  X B G R
+        ctx.a1 = pack8_in_int(0, ctx.c1, ctx.b1, ctx.a1);
+        ctx.a2 = pack8_in_int(0, ctx.c2, ctx.b2, ctx.a2);
+        ctx.a3 = pack8_in_int(0, ctx.c3, ctx.b3, ctx.a3);
+        ctx.a4 = pack8_in_int(0, ctx.c4, ctx.b4, ctx.a4);
     }
     if(cs == BGR32)
     {
-        ctx.a1 = pack10_in_int(ctx.c1, ctx.b1, ctx.a1) << 10 ;
-        ctx.a2 = pack10_in_int(ctx.c2, ctx.b2, ctx.a2) << 10 ;
-        ctx.a3 = pack10_in_int(ctx.c3, ctx.b3, ctx.a3) << 10 ;
-        ctx.a4 = pack10_in_int(ctx.c4, ctx.b4, ctx.a4) << 10 ;
+        ctx.a1 = pack8_in_int(0, ctx.c1, ctx.b1, ctx.a1) << 10 ;
+        ctx.a2 = pack8_in_int(0, ctx.c2, ctx.b2, ctx.a2) << 10 ;
+        ctx.a3 = pack8_in_int(0, ctx.c3, ctx.b3, ctx.a3) << 10 ;
+        ctx.a4 = pack8_in_int(0, ctx.c4, ctx.b4, ctx.a4) << 10 ;
     }
 
     if(cs == A2R10G10B10)
@@ -1180,27 +1126,34 @@ template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t
 
 template <Colorspace cs> static inline void clip_point(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
+    // TODO REFACTORING!
     //puts("before");
     //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
-    if(cs == RGB24)
+    if(IS_8BIT( cs ) && IS_RGB( cs ))
     {
         val_a = clip(val_a, 0, 255);
         val_b = clip(val_b, 0, 255);
         val_c = clip(val_c, 0, 255);
     }
-    if( cs == A2R10G10B10)
+    else if( IS_10BIT( cs ) && IS_RGB( cs ))
     {
         val_a = clip(val_a, 0, 255 << 2);
         val_b = clip(val_b, 0, 255 << 2);
         val_c = clip(val_c, 0, 255 << 2);
     }
-    else if( IS_YUV( cs ) )
+    else if( IS_YUV( cs ) && IS_8BIT( cs ) )
     {
         val_a = clip(val_a, 16, 235);
         val_b = clip(val_b, 16, 240);
         val_c = clip(val_c, 16, 240);
         //puts("after");
         //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
+    }
+    else if( IS_YUV( cs ) && IS_10BIT( cs ) )
+    {
+        val_a = clip(val_a, 16 << 2, 235 << 2);
+        val_b = clip(val_b, 16 << 2, 240 << 2);
+        val_c = clip(val_c, 16 << 2, 240 << 2);
     }
 }
 /*
@@ -1225,11 +1178,9 @@ inline void round_shift( int32_t& a, int32_t& b, int32_t& c, int n){
     c = (c + (1 << (n - 1))) >> n;
 }
 
-
-
-template <Colorspace cs_from, Colorspace cs_to> inline void convert_range(int32_t* matrix)
+template <Colorspace from_cs, Colorspace cs_to> inline void convert_range(int32_t* matrix)
 {
-    if(IS_RGB(cs_from) && IS_YUV(cs_to))
+    if(IS_RGB(from_cs) && IS_YUV(cs_to))
         for(int r = 0 ; r < 3; ++r)
         {
             matrix[r * 3 + 0] *= 219;
@@ -1240,7 +1191,7 @@ template <Colorspace cs_from, Colorspace cs_to> inline void convert_range(int32_
             matrix[r * 3 + 1] >>= 8;
             matrix[r * 3 + 2] >>= 8;
         }
-    if(IS_YUV(cs_from) && IS_RGB(cs_to))
+    if(IS_YUV(from_cs) && IS_RGB(cs_to))
         for(int r = 0 ; r<3; ++r)
         {
             matrix[r * 3 + 0] <<= 8;

@@ -6,8 +6,9 @@
 #include <fstream>
 #include <sstream>
 #include <memory>
+#include <ctime>
 #include "color_convert.hpp"
-
+//#include "color_convert_sse2.hpp"
 
 
 using namespace ColorspaceConverter;
@@ -495,6 +496,42 @@ static int syntetic_test()
     colorspace_convert<RGB24, A2R10G10B10, BT_601> ( info );
     print_planar( info );
     std::cout << "Diff is " << check( (uint8_t*)(test_A2R10G10B10_bt601), info.dst_data[ 0 ], 8 * 4 * 2 ) << "\n";
+//*****************************************************************
+    std::cout << "RGB24 to RGB32 interleaved\n";
+    set_meta <RGB24, RGB32 >(info, 8, 2, test_RGB24_to_A2R10G10B10);
+    colorspace_convert<RGB24, RGB32, BT_601> ( info );
+    print_planar( info );
+    //std::cout << "Diff is " << check( (uint8_t*)(test_A2R10G10B10_bt601), info.dst_data[ 0 ], 8 * 4 * 2 ) << "\n";
+
+//*****************************************************************
+
+
+    std::cout << "Repack test\n";
+    std::cout << "YUYV to RGB32-------------------------\n";
+    set_meta <YUYV, RGB32 >(info, 8, 2, test_yuv422i_bt601);
+    colorspace_convert<YUYV, RGB32, BT_601> (info);
+    print_planar( info ) ;
+/*
+    std::cout << "Multiframe test\n";
+    std::cout << "YUYV to RGB32-------------------------\n";
+    srand( time( NULL ) );
+    int fnum, wid, hei;
+    fnum = 500;
+    wid = 640;
+    hei = 480;
+    uint8_t* frame = (uint8_t*)malloc( wid * hei * fnum * 2);
+    for(int fr = 0; fr < fnum; ++fr)
+        for( int y = 0; y < hei; ++y )
+            for( int x = 0; x < wid * 2; ++x ) {
+                frame[ fr * wid * 2 * hei  + y * wid * 2 + x] = rand() % 256;
+            }
+    set_meta <YUYV, RGB32 >(info, wid, hei * fnum, frame);
+    clock_t t1 = clock();
+    colorspace_convert<YUYV, RGB32, BT_601> (info);
+    clock_t t2 = clock();
+    std::cout << "diff = " <<  t2 - t1 << std::endl;
+    free( frame );
+*/
     return 0;
 }
 static void print_usage()

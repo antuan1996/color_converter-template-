@@ -1126,9 +1126,6 @@ template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t
 
 template <Colorspace cs> static inline void clip_point(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
-    // TODO REFACTORING!
-    //puts("before");
-    //std::cout << val_a << " "<< val_b << " " << val_c << std::endl;
     if(IS_8BIT( cs ) && IS_RGB( cs ))
     {
         val_a = clip(val_a, 0, 255);

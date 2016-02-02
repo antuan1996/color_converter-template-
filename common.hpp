@@ -74,4 +74,50 @@ enum Standard
 	BT_709,
 	BT_2020
 };
+static const int32_t k_bt601_RGB_to_YUV[3 * 3] =
+{
+    77,  150,  29,
+    -44,  -87, 131,
+    131, -110, -21,
+};
+
+static const int32_t e_matrix[3 * 3] =
+{
+    256, 0, 0,
+    0, 256, 0,
+    0, 0, 256
+};
+
+static const int32_t k_bt709_RGB_to_YUV[3 * 3] =
+{
+    54, 183, 18,
+    -30, -101, 131,
+    131, -119, -12
+};
+
+static const int32_t k_bt2020_RGB_to_YUV[3 * 3] =
+{
+    67, 174, 15,
+    -37, -94, 131,
+    131, -120, -10
+};
+static const int32_t k_bt601_YUV_to_RGB[3 * 3] =
+{
+    256,   0,  351,
+    256, -86, -179,
+    256, 444,    0
+};
+
+static const int32_t k_bt709_YUV_to_RGB[3 * 3] =
+{
+    256, 0 , 394,
+    256, -47, -117,
+    256, 465,    0
+};
+static const int32_t k_bt2020_YUV_to_RGB[3 * 3] =
+{
+    256, 0, 369,
+    256, -41, -143,
+    257, 471, 0
+};
 #endif

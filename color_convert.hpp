@@ -8,89 +8,26 @@ namespace ColorspaceConverter
  * p1 p2
  * p3 p4
  */
+struct ConvertSpecific
+{
+    int32_t offset_y_from;
+    int32_t offset_u_from;
+    int32_t offset_v_from;
+
+    int32_t offset_y_to;
+    int32_t offset_u_to;
+    int32_t offset_v_to;
+ };
+
 struct Context
 {
 	int32_t a1, b1, c1;
 	int32_t a2, b2, c2;
 	int32_t a3, b3, c3;
 	int32_t a4, b4, c4;
+    ConvertSpecific spec;
 };
 
-struct ConvertMeta
-{
-    ConvertMeta()
-    {
-        dst_data[ 0 ] = nullptr;
-        dst_data[ 1 ] = nullptr;
-        dst_data[ 2 ] = nullptr;
-    }
-
-	uint8_t *src_data[3];
-	uint8_t *dst_data[3];
-	size_t width;
-	size_t height;
-
-    int32_t offset_y_from;
-    int32_t offset_u_from;
-    int32_t offset_v_from;
-
-
-    int32_t offset_y_to;
-    int32_t offset_u_to;
-    int32_t offset_v_to;
-
-    size_t src_stride[3];
-    size_t dst_stride_horiz[3];
-    size_t dst_stride_vert[3];
-
-};
-
-static const int32_t k_bt601_RGB_to_YUV[3 * 3] =
-{
-	77,  150,  29,
-	-44,  -87, 131,
-	131, -110, -21,
-};
-
-static const int32_t e_matrix[3 * 3] =
-{
-	256, 0, 0,
-	0, 256, 0,
-	0, 0, 256
-};
-
-static const int32_t k_bt709_RGB_to_YUV[3 * 3] =
-{
-	54, 183, 18,
-	-30, -101, 131,
-	131, -119, -12
-};
-
-static const int32_t k_bt2020_RGB_to_YUV[3 * 3] =
-{
-    67, 174, 15,
-    -37, -94, 131,
-    131, -120, -10
-};
-static const int32_t k_bt601_YUV_to_RGB[3 * 3] =
-{
-	256,   0,  351,
-	256, -86, -179,
-	256, 444,    0
-};
-
-static const int32_t k_bt709_YUV_to_RGB[3 * 3] =
-{
-	256, 0 , 394,
-	256, -47, -117,
-	256, 465,    0
-};
-static const int32_t k_bt2020_YUV_to_RGB[3 * 3] =
-{
-    256, 0, 369,
-    256, -41, -143,
-    257, 471, 0
-};
 
 template <Colorspace from_cs, Colorspace to_cs> inline void scale(int32_t& val_a, int32_t& val_b, int32_t& val_c)
 {
@@ -113,258 +50,24 @@ template <Colorspace from_cs, Colorspace to_cs> inline void scale(int32_t& val_a
     assert(0);
     //TODO unsupported formats
 }
-template <Colorspace from_cs, Colorspace to_cs> inline void init_offset_yuv( ConvertMeta& meta )
+template <Colorspace from_cs, Colorspace to_cs> inline void init_offset_yuv( Context& ctx )
 {
 
     // y+= 16 - result of range manipulation
-    meta.offset_y_from = 16;
-    meta.offset_u_from = 128;
-    meta.offset_v_from = 128;
+    ctx.spec.offset_y_from = 16;
+    ctx.spec.offset_u_from = 128;
+    ctx.spec.offset_v_from = 128;
     if(IS_YUV(from_cs))
-        scale < YUV444, from_cs> (meta.offset_y_from, meta.offset_u_from, meta.offset_v_from);
+        scale < YUV444, from_cs> (ctx.spec.offset_y_from, ctx.spec.offset_u_from, ctx.spec.offset_v_from);
 
-    meta.offset_y_to = 16;
-    meta.offset_u_to = 128;
-    meta.offset_v_to = 128;
+    ctx.spec.offset_y_to = 16;
+    ctx.spec.offset_u_to = 128;
+    ctx.spec.offset_v_to = 128;
     if(IS_YUV(to_cs))
-        scale < YUV444, to_cs> (meta.offset_y_to, meta.offset_u_to, meta.offset_v_to);
+        scale < YUV444, to_cs> (ctx.spec.offset_y_to, ctx.spec.offset_u_to, ctx.spec.offset_v_to);
 
 }
 
-template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta , int width, int height, uint8_t* src_a, uint8_t* src_b = nullptr,uint8_t* src_c = nullptr)
-{
-    meta.width = width;
-    meta.height = height;
-    meta.src_data[ 0 ] = src_a;
-    meta.src_data[ 1 ] = src_b;
-    meta.src_data[ 2 ] = src_c;
-    init_offset_yuv< from_cs,  to_cs >( meta );
-
-    meta.src_stride[ 0 ] = meta.src_stride[ 1 ] = meta.src_stride[ 2 ] = 0;
-    meta.dst_stride_horiz[ 0 ] = meta.dst_stride_horiz[ 1 ] = meta.dst_stride_horiz[ 2 ] = 0;
-    meta.dst_stride_vert[ 0 ] = meta.dst_stride_vert[ 1 ] = meta.dst_stride_vert[ 2 ] = 0;
-    if( meta.dst_data[ 0 ] != nullptr)
-        free( meta.dst_data[ 0 ]);
-    meta.dst_data[ 0 ] = nullptr;
-    meta.dst_data[ 1 ] = nullptr;
-    meta.dst_data[ 2 ] = nullptr;
-    if(from_cs == RGB24)
-    {
-        meta.src_stride[ 0 ] = width * 3;
-    }
-    if(from_cs == YUV444)
-    {
-        meta.src_stride[ 0 ] = width;
-        meta.src_stride[ 1 ] = width;
-        meta.src_stride[ 2 ] = width;
-    }
-    if(from_cs == YUYV || from_cs == YVYU || from_cs == UYVY)
-    {
-        meta.src_stride[ 0 ] = width * 2;
-    }
-    if(from_cs == Y210)
-    {
-        meta.src_stride[ 0 ] = width * 2 * 2;
-    }
-    if(from_cs == NV21 || from_cs == NV12)
-    {
-        meta.src_stride[ 0 ] = width;
-        meta.src_stride[ 1 ] = width;
-    }
-    if(from_cs == YV12 || from_cs == I420)
-    {
-
-        meta.src_stride[ 0 ] = width;
-        meta.src_stride[ 1 ] = width / 2;
-        meta.src_stride[ 2 ] = width / 2;
-
-    }
-    if(from_cs == YV16 || from_cs == YUV422)
-    {
-
-        meta.src_stride[ 0 ] = width;
-        meta.src_stride[ 1 ] = width / 2;
-        meta.src_stride[ 2 ] = width / 2;
-
-    }
-    if(from_cs == P210 || from_cs == P010)
-    {
-        meta.src_stride[ 0 ] = width * 2;
-        meta.src_stride[ 1 ] = width * 2;
-    }
-    if(from_cs == V210)
-    {
-        // TODO align on 48 pixels
-        meta.src_stride[ 0 ] = width * 16 / 6;
-    }
-
-    //destination settings
-
-    if(to_cs == RGB24)
-    {
-        meta.dst_stride_horiz[ 0 ] = width * 3;
-        meta.dst_stride_vert[0] = height;
-    }
-    if(to_cs == RGB32)
-    {
-        meta.dst_stride_horiz[ 0 ] = width * 4;
-        meta.dst_stride_vert[0] = height;
-    }
-
-    if(to_cs == A2R10G10B10)
-    {
-         meta.dst_stride_horiz[ 0 ] = width * 4;
-         meta.dst_stride_vert[ 0 ] = height;
-    }
-    if(to_cs == YUV444)
-    {
-        meta.dst_stride_horiz[ 0 ] = width;
-        meta.dst_stride_horiz[ 1 ] = width;
-        meta.dst_stride_horiz[ 2 ] = width;
-
-        meta.dst_stride_vert[ 0 ] = height;
-        meta.dst_stride_vert[ 1 ] = height;
-        meta.dst_stride_vert[ 2 ] = height;
-
-    }
-    if(to_cs == YUYV || to_cs == YVYU || to_cs == UYVY)
-    {
-         meta.dst_stride_horiz[ 0 ] = width * 2;
-         meta.dst_stride_vert[ 0 ] = height;
-    }
-    if(to_cs == Y210)
-    {
-         meta.dst_stride_horiz[ 0 ] = width * 4;
-         meta.dst_stride_vert[0] = height;
-    }
-    if(to_cs == NV21 || to_cs == NV12)
-    {
-         meta.dst_stride_horiz[ 0 ] = width;
-         meta.dst_stride_horiz[ 1 ] = width;
-
-         meta.dst_stride_vert[0] = height;
-         meta.dst_stride_vert[1] = height / 2;
-    }
-    if(to_cs == YV12 || to_cs == I420)
-    {
-
-         meta.dst_stride_horiz[ 0 ] = width;
-         meta.dst_stride_horiz[ 1 ] = width / 2;
-         meta.dst_stride_horiz[ 2 ] = width / 2;
-
-
-         meta.dst_stride_vert[0] = height;
-         meta.dst_stride_vert[1] = height / 2;
-         meta.dst_stride_vert[2] = height / 2;
-
-    }
-    if(to_cs == YV16 || to_cs == YUV422)
-    {
-
-         meta.dst_stride_horiz[ 0 ] = width;
-         meta.dst_stride_horiz[ 1 ] = width / 2;
-         meta.dst_stride_horiz[ 2 ] = width / 2;
-
-         meta.dst_stride_vert[ 0 ] = height;
-         meta.dst_stride_vert[ 1 ] = height;
-         meta.dst_stride_vert[ 2 ] = height;
-
-    }
-    if(to_cs == P210 || to_cs == P010)
-    {
-         meta.dst_stride_horiz[ 0 ] = width * 2;
-         meta.dst_stride_horiz[ 1 ] = width * 2;
-    }
-    if(to_cs == P210)
-    {
-        meta.dst_stride_vert[ 0 ] = height;
-        meta.dst_stride_vert[ 1 ] = height;
-
-    }
-    if(to_cs == P010)
-    {
-        meta.dst_stride_vert[ 0 ] = height;
-        meta.dst_stride_vert[ 1 ] = height / 2;
-    }
-    if(to_cs == V210)
-    {
-         meta.dst_stride_horiz[ 0 ] = width * 16 / 6;
-         meta.dst_stride_vert[ 0 ] = height;
-
-    }
-
-    int siz = 0;
-    siz += meta.dst_stride_horiz[ 0 ] * meta.dst_stride_vert[ 0 ];
-    siz += meta.dst_stride_horiz[ 1 ] * meta.dst_stride_vert[ 1 ];
-    siz += meta.dst_stride_horiz[ 2 ] * meta.dst_stride_vert[ 2 ];
-
-    meta.dst_data[ 0 ] = (uint8_t*) malloc( siz );
-    memset(meta.dst_data[0], 0, siz);
-
-    meta.dst_data[ 1 ] = meta.dst_data[ 0 ] + meta.dst_stride_horiz[ 0 ] * meta.dst_stride_vert[ 0 ];
-    meta.dst_data[ 2 ] = meta.dst_data[ 1 ] + meta.dst_stride_horiz[ 1 ] * meta.dst_stride_vert[ 1 ];
-}
-
-template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& posc, const int cur_pos)
-{
-    posa = 0;
-    posb = 0;
-    posc = 0;
-    if (cs == RGB24 || cs == BGR24 )
-    {
-        posa = cur_pos * 3;
-        return;
-	}
-    if( cs == YUV444)
-    {
-        posa = cur_pos;
-        posb = cur_pos;
-        posc = cur_pos;
-
-    }
-    if (cs == A2R10G10B10 || cs == A2B10G10R10 || cs == RGB32 || cs == BGR32) {
-        posa = cur_pos * 4;
-	}
-    if( cs == YUYV || cs == YVYU || cs == UYVY )
-    {
-        posa =cur_pos * 2;
-    }
-    if(cs == YUV422 || cs == YV16 || cs == I420 || cs == YV12)
-    {
-        // Y Y
-        // Y Y
-        //U
-        //*U
-        //V
-        //*V
-        posa = cur_pos;
-        posb = cur_pos / 2;
-        posc = cur_pos / 2;
-    }
-    if(cs == NV21 || cs == NV12)
-    {
-        // Y Y
-        // Y Y
-        //U V
-        posa = cur_pos;
-        posb = cur_pos;
-
-    }
-    if(cs == P210 || cs == P010)
-    {
-        posa = cur_pos * 2;
-        posb = cur_pos * 2;
-    }
-    if(cs == Y210)
-    {
-        posa = cur_pos * 2 * 2;
-    }
-    if(cs == V210)
-    {
-        posa = cur_pos * 16 / 6;
-    }
-
-}
 
 // TO DO new transform matrix
 template <Colorspace from_cs, Colorspace to_cs, Standard st> void set_transform_coeffs(int32_t* res_matrix)
@@ -737,34 +440,43 @@ template < Colorspace cs> inline void unpack (Context& ctx, Context& ctx2, Conte
         ctx.c1 >>= 6;
 
     }
-    if(cs == RGB32)
-    {
-        ctx.c1 = (ctx.a1 >> 8) & 0XFF;
-        ctx.b1 = (ctx.a1 >> 16) & 0XFF;
-        ctx.a1 = (ctx.a1 >> 24) & 0XFF;
-
-        ctx.c2 = (ctx.a2 >> 8) & 0XFF;
-        ctx.b2 = (ctx.a2 >> 16) & 0XFF;
-        ctx.a2 = (ctx.a2 >> 24) & 0XFF;
-
-        ctx.c3 = (ctx.a3 >> 8) & 0XFF;
-        ctx.b3 = (ctx.a3 >> 16) & 0XFF;
-        ctx.a3 = (ctx.a3 >> 24) & 0XFF;
-    }
     if(cs == BGR32)
     {
+        ctx.c1 = (ctx.a1) & 0XFF;
+        ctx.b1 = (ctx.a1 >> 8) & 0XFF;
+        ctx.a1 = (ctx.a1 >> 16) & 0XFF;
 
-        ctx.c1 = (ctx.a1 >> 24) & 0XFF;
-        ctx.b1 = (ctx.a1 >> 16) & 0XFF;
-        ctx.a1 = (ctx.a1 >> 8) & 0XFF;
+        ctx.c2 = (ctx.a2 ) & 0XFF;
+        ctx.b2 = (ctx.a2 >> 8) & 0XFF;
+        ctx.a2 = (ctx.a2 >> 16) & 0XFF;
 
-        ctx.c2 = (ctx.a2 >> 24) & 0XFF;
-        ctx.b2 = (ctx.a2 >> 16) & 0XFF;
-        ctx.a2 = (ctx.a2 >> 8) & 0XFF;
+        ctx.c3 = (ctx.a3 ) & 0XFF;
+        ctx.b3 = (ctx.a3 >> 8) & 0XFF;
+        ctx.a3 = (ctx.a3 >> 16) & 0XFF;
 
-        ctx.c3 = (ctx.a3 >> 24) & 0XFF;
-        ctx.b3 = (ctx.a3 >> 16) & 0XFF;
-        ctx.a3 = (ctx.a3 >> 8) & 0XFF;
+        ctx.c4 = (ctx.a4 ) & 0XFF;
+        ctx.b4 = (ctx.a4 >> 8) & 0XFF;
+        ctx.a4 = (ctx.a4 >> 16) & 0XFF;
+    }
+    if(cs == RGB32)
+    {
+
+        ctx.c1 = (ctx.a1 >> 16) & 0XFF;
+        ctx.b1 = (ctx.a1 >> 8) & 0XFF;
+        ctx.a1 = (ctx.a1 ) & 0XFF;
+
+        ctx.c2 = (ctx.a2 >> 16) & 0XFF;
+        ctx.b2 = (ctx.a2 >> 8) & 0XFF;
+        ctx.a2 = (ctx.a2) & 0XFF;
+
+        ctx.c3 = (ctx.a3 >> 16) & 0XFF;
+        ctx.b3 = (ctx.a3 >> 8) & 0XFF;
+        ctx.a3 = (ctx.a3) & 0XFF;
+
+        ctx.c4 = (ctx.a4 >> 16) & 0XFF;
+        ctx.b4 = (ctx.a4 >> 8) & 0XFF;
+        ctx.a4 = (ctx.a4) & 0XFF;
+
     }
     if(cs == P210 || cs == Y210)
     {
@@ -1067,10 +779,10 @@ template <Colorspace cs> inline void pack(Context& ctx, Context& ctx2 = 0, Conte
     }
     if(cs == BGR32)
     {
-        ctx.a1 = pack8_in_int(0, ctx.c1, ctx.b1, ctx.a1) << 10 ;
-        ctx.a2 = pack8_in_int(0, ctx.c2, ctx.b2, ctx.a2) << 10 ;
-        ctx.a3 = pack8_in_int(0, ctx.c3, ctx.b3, ctx.a3) << 10 ;
-        ctx.a4 = pack8_in_int(0, ctx.c4, ctx.b4, ctx.a4) << 10 ;
+        ctx.a1 = pack8_in_int(0, ctx.c1, ctx.b1, ctx.a1);
+        ctx.a2 = pack8_in_int(0, ctx.c2, ctx.b2, ctx.a2);
+        ctx.a3 = pack8_in_int(0, ctx.c3, ctx.b3, ctx.a3);
+        ctx.a4 = pack8_in_int(0, ctx.c4, ctx.b4, ctx.a4);
     }
 
     if(cs == A2R10G10B10)
@@ -1103,23 +815,23 @@ template <class T> inline T round_shift(T val, const size_t n)
 
 
 
-template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v,bool is_left, ConvertMeta& meta)
+template <Colorspace cs> inline void offset_yuv (int32_t& y, int32_t& u, int32_t& v,bool is_left, Context& ctx)
 {
     if(IS_YUV( cs ))
     {
         //offset left
         if(is_left)
         {
-            y -= meta.offset_y_from;
-            u -= meta.offset_u_from;
-            v -= meta.offset_v_from;
+            y -= ctx.spec.offset_y_from;
+            u -= ctx.spec.offset_u_from;
+            v -= ctx.spec.offset_v_from;
         }
         else
         // offset right
         {
-            y += meta.offset_y_to;
-            u += meta.offset_u_to;
-            v += meta.offset_v_to;
+            y += ctx.spec.offset_y_to;
+            u += ctx.spec.offset_u_to;
+            v += ctx.spec.offset_v_to;
         }
     }
 }
@@ -1219,10 +931,10 @@ template <Colorspace from_cs, Colorspace to_cs> inline void transform (Context &
     //  matrix multiple
     if( (IS_RGB(from_cs) && IS_YUV(to_cs)) || (IS_YUV(from_cs) && IS_RGB(to_cs)))
     {
-        offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_LEFT, meta);
-        offset_yuv <from_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_LEFT, meta);
-        offset_yuv <from_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_LEFT, meta);
-        offset_yuv <from_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_LEFT, meta);
+        offset_yuv <from_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_LEFT, ctx);
+        offset_yuv <from_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_LEFT, ctx);
+        offset_yuv <from_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_LEFT, ctx);
+        offset_yuv <from_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_LEFT, ctx);
 
         mat_mul(ctx.a1, ctx.b1, ctx.c1, transform_matrix);
         mat_mul(ctx.a2, ctx.b2, ctx.c2, transform_matrix);
@@ -1234,10 +946,10 @@ template <Colorspace from_cs, Colorspace to_cs> inline void transform (Context &
         round_shift(ctx.a3, ctx.b3, ctx.c3, 8);
         round_shift(ctx.a4, ctx.b4, ctx.c4, 8);
 
-        offset_yuv <to_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_RIGHT, meta);
-        offset_yuv <to_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_RIGHT, meta);
-        offset_yuv <to_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_RIGHT, meta);
-        offset_yuv <to_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_RIGHT, meta);
+        offset_yuv <to_cs> (ctx.a1, ctx.b1, ctx.c1, SHIFT_RIGHT, ctx);
+        offset_yuv <to_cs> (ctx.a2, ctx.b2, ctx.c2, SHIFT_RIGHT, ctx);
+        offset_yuv <to_cs> (ctx.a3, ctx.b3, ctx.c3, SHIFT_RIGHT, ctx);
+        offset_yuv <to_cs> (ctx.a4, ctx.b4, ctx.c4, SHIFT_RIGHT, ctx);
 
         clip_point <to_cs> (ctx.a1, ctx.b1, ctx.c1);
         clip_point <to_cs> (ctx.a2, ctx.b2, ctx.c2);
@@ -1279,6 +991,10 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
 	uint8_t* dst_b = meta.dst_data[1];
 	uint8_t* dst_c = meta.dst_data[2];
     Context context1, context2, context3;
+    init_offset_yuv < from_cs, to_cs > ( context1 );
+    init_offset_yuv < from_cs, to_cs > ( context2 );
+    init_offset_yuv < from_cs, to_cs > ( context3 );
+
     int8_t step;
     if(from_cs == V210 || to_cs == V210)
         step = 6;

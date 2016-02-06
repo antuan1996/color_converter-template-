@@ -1,5 +1,5 @@
 //#define ENABLE_LOG
-#define SSE2
+//#define SSE2
 #define PACK_A2R10G10B10(a, b, c) ( pack10_in_int(a, b, c)  | (3 << 30) )
 
 #include <string>
@@ -228,6 +228,11 @@ static int syntetic_test()
         255,255,255,0, 255,255,255,0,     255,0,0,0, 255,0,0,0,     0,255,0,0, 0,255,0,0,      0,0,255,0, 0,0,255,0,
         255,255,255,0, 255,255,255,0,     255,0,0,0, 255,0,0,0,     0,255,0,0, 0,255,0,0,      0,0,255,0, 0,0,255,0,
     };
+    static uint8_t test_RGB24_to_YUV420 [8 * 4 * 2] =
+    {
+        255,255,255,    255,255,255,     255,0,0,    255,0,0,     0,255,0,      0,255,0,      0,0,255,   0,0,255,
+        255,255,255,    255,255,255,     255,0,0,    255,0,0,     0,255,0,      0,255,0,      0,0,255,   0,0,255
+    };
 
 	static uint8_t test_yuv444p_bt2020[(8 * 2) * 3] =
 	{
@@ -383,10 +388,17 @@ static int syntetic_test()
     colorspace_convert<NV12, RGB32, BT_601> (info);
     print_planar( info ) ;
 
+
     std::cout << "RGB32 to NV12-------------------------\n";
     set_meta <RGB32, NV12 >(info, 8, 2, test_RGB32_to_YUV420);
     colorspace_convert<RGB32, NV12, BT_601> (info);
     print_planar( info ) ;
+
+    std::cout << "RGB24 to NV12-------------------------\n";
+    set_meta <RGB24, NV12 >(info, 8, 2, test_RGB24_to_YUV420);
+    colorspace_convert<RGB24, NV12, BT_601> (info);
+    print_planar( info ) ;
+
 
 
     //*****************************************************************
@@ -565,27 +577,33 @@ static int syntetic_test()
     print_planar( info ) ;
 
 */
-    /*
+
     std::cout << "Multiframe test\n";
-    std::cout << "RGB32 to A2R10G10B10-------------------------\n";
+    //std::cout << "RGB32 to A2R10G10B10-------------------------\n";
+    std::cout << "RGB24 to NV12-------------------------\n";
+
     srand( time( NULL ) );
     int fnum, wid, hei;
     fnum = 50;
     wid = 640;
     hei = 480;
-    uint8_t* frame = (uint8_t*)malloc( wid * hei * fnum * 4);
+    uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum * 4);
     for(int fr = 0; fr < fnum; ++fr)
         for( int y = 0; y < hei; ++y )
             for( int x = 0; x < wid * 4; ++x ) {
                 frame[ fr * wid * 4 * hei  + y * wid * 4 + x] = rand() % 256;
             }
-    set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
+
+    set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
+    //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
+
     clock_t t1 = clock();
-    colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
+    //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
+    colorspace_convert<RGB24, NV12, BT_601> (info);
     clock_t t2 = clock();
     std::cout << "Time diff = " <<  t2 - t1 << std::endl;
     free( frame );
-    */
+
     return 0;
 }
 static void print_usage()

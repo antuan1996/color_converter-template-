@@ -23,7 +23,6 @@ typedef struct{
     __m128i subrow1;
     __m128i subrow2;
     __m128i subrow3;
-
 }Matrix;
 
 /*
@@ -168,9 +167,9 @@ template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs
     ctx.spec.t_matrix.row1 = _mm_set_epi16(res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ]);
     ctx.spec.t_matrix.row2 = _mm_set_epi16(res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ]);
     ctx.spec.t_matrix.row3 = _mm_set_epi16(res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ]);
-    ctx.spec.t_matrix.subrow1 = _mm_set_epi32(res_matrix[ 2 ],res_matrix[ 2 ],res_matrix[ 2 ],res_matrix[ 2 ]);
-    ctx.spec.t_matrix.subrow2 = _mm_set_epi32(res_matrix[ 5 ],res_matrix[ 5 ],res_matrix[ 5 ],res_matrix[ 5 ]);
-    ctx.spec.t_matrix.subrow3 = _mm_set_epi32(res_matrix[ 8 ],res_matrix[ 8 ],res_matrix[ 8 ],res_matrix[ 8 ]);
+    ctx.spec.t_matrix.subrow1 = _mm_set_epi16(0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ]);
+    ctx.spec.t_matrix.subrow2 = _mm_set_epi16(0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ]);
+    ctx.spec.t_matrix.subrow3 = _mm_set_epi16(0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ]);
 }
 template < Colorspace cs> TARGET_INLINE void load(ConvertMeta& meta, Context& ctx, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
 {
@@ -192,6 +191,14 @@ template < Colorspace cs> TARGET_INLINE void load(ConvertMeta& meta, Context& ct
         ctx.data1.a = _mm_loadl_epi64( ( __m128i* )( srca ) );
         ctx.data2.a = _mm_loadl_epi64( ( __m128i* )( src_na ) );
         ctx.data1.b = _mm_loadl_epi64( ( __m128i* )( srcb ) );
+    }
+    if ( cs == RGB24 )
+    {
+        ctx.data1.a = _mm_loadu_si128( ( __m128i* )( srca ) );
+        ctx.data1.b = _mm_loadl_epi64( ( __m128i* )( srca + 16 ) );
+
+        ctx.data2.a = _mm_loadu_si128( ( __m128i* )( src_na ) );
+        ctx.data2.b = _mm_loadl_epi64( ( __m128i* )( src_na + 16 ) );
     }
 }
 
@@ -226,6 +233,30 @@ static TARGET_INLINE VectorPixel unpack_YUYV( __m128i vec) {
 
     return data;
 }
+static TARGET_INLINE VectorPixel unpack_RGB24( __m128i vec) {
+    VectorPixel data;
+    // vec = 0 0 0 0 b g r b g r b g r b g r
+    data.a = _mm_unpacklo_epi8(  vec, _mm_bsrli_si128( vec, 6 )); // 1 and 3
+    data.b = _mm_unpacklo_epi8( _mm_bsrli_si128( vec, 3 ), _mm_bsrli_si128( vec, 9 )); // 2 and 4
+    vec = _mm_unpacklo_epi8( data.a, data.b );
+    // vec = X X X X b b b b g g g g r r r r
+
+    data.c = _mm_set_epi32( 0, 0, 0, -1); // store of mask
+
+    data.a = _mm_and_si128( data.c, vec );
+    data.b = _mm_and_si128( _mm_bsrli_si128( vec, 4 ), data.c );
+    data.c = _mm_and_si128( _mm_bsrli_si128( vec, 8 ), data.c );
+
+    data.a = _mm_unpacklo_epi8( data.a, _mm_setzero_si128() );
+    data.b = _mm_unpacklo_epi8( data.b, _mm_setzero_si128() );
+    data.c = _mm_unpacklo_epi8( data.c, _mm_setzero_si128() );
+
+    data.a = _mm_unpacklo_epi16( data.a, _mm_setzero_si128() );
+    data.b = _mm_unpacklo_epi16( data.b, _mm_setzero_si128() );
+    data.c = _mm_unpacklo_epi16( data.c, _mm_setzero_si128() );
+    return data;
+}
+
 static TARGET_INLINE VectorPixel unpack_YVYU( __m128i vec) {
     VectorPixel data;
     // vec = 0 0 0 0 0 0 0 0 u y v y u y v y
@@ -373,6 +404,19 @@ template < Colorspace cs> TARGET_INLINE void unpack (Context& ctx, Context& ctx2
 
         ctx2.data1 = unpack_NV12( ctx2.data1.a, ctx2.data1.b );
         ctx2.data2 = unpack_NV12( ctx2.data2.a, ctx2.data2.b );
+    }
+    if( cs == RGB24 )
+    {
+        ctx.bufa = _mm_bsrli_si128( _mm_bslli_si128( ctx.data1.a, 4), 4);
+        ctx2.bufa = _mm_or_si128( _mm_bslli_si128( ctx.data1.b, 4), _mm_bsrli_si128( ctx.data1.a, 12 ));
+        ctx.bufb = _mm_bsrli_si128( _mm_bslli_si128( ctx.data2.a, 4), 4);
+        ctx2.bufb = _mm_or_si128( _mm_bslli_si128( ctx.data2.b, 4), _mm_bsrli_si128( ctx.data2.a, 12 ));
+
+        ctx.data1 = unpack_RGB24( ctx.bufa );
+        ctx2.data1 = unpack_RGB24( ctx2.bufa );
+        ctx.data2 = unpack_RGB24( ctx.bufb );
+        ctx2.data2 = unpack_RGB24( ctx2.bufb );
+
     }
 }
 static TARGET_INLINE __m128i pack_RGB32(VectorPixel rgb_data)
@@ -614,9 +658,9 @@ template <Colorspace cs> TARGET_INLINE void offset_yuv (VectorPixel& data, bool 
         else
         // offset right
         {
-            data.a = _mm_add_epi16( data.a, ctx.spec.voffset_y_to);
-            data.b = _mm_add_epi16( data.b, ctx.spec.voffset_u_to);
-            data.c = _mm_add_epi16( data.c, ctx.spec.voffset_v_to);
+            data.a = _mm_add_epi32( data.a, ctx.spec.voffset_y_to);
+            data.b = _mm_add_epi32( data.b, ctx.spec.voffset_u_to);
+            data.c = _mm_add_epi32( data.c, ctx.spec.voffset_v_to);
         }
     }
 }
@@ -762,10 +806,10 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
     int8_t step;
     if(from_cs == V210 || to_cs == V210)
         step = 6;
-    else if( from_cs == YUYV || from_cs == YVYU || from_cs == A2R10G10B10 || from_cs == A2B10G10R10 )
-        step = 4;
-    else if( from_cs == NV12 || from_cs == NV21 )
+    if( IS_MULTISTEP( from_cs ) || IS_MULTISTEP( to_cs ))
         step = 8;
+    else
+        step = 4;
     size_t x,y;
     size_t shift_a, shift_b, shift_c;
     if(from_cs == V210 && to_cs == V210)

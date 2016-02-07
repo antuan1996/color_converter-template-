@@ -218,10 +218,10 @@ static int syntetic_test()
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
     };
-    static uint8_t test_RGB32_to_A2R10G10B10 [8 * 4 * 2] =
+    static uint8_t test_RGB32 [8 * 4 * 2] =
     {
         255,255,255,0,   255,0,0,0,    0,255,0,0,   0,0,255,0,   255,255,0,0,   0,255,255,0,   255,0,255,0,   255,255,255,0,
-        255,255,255,0,   255,0,0,0,    0,255,0,0,    0,0,255,0,   255,255,0,0,   0,255,255,0,   255,0,255,0,   255,255,255,0
+        255,255,255,0,   255,0,255,0,  255,255,0,0, 0,255,255,0, 0,0,255,0,     0,255,0,0,     255,0,0,0,     255,255,255,0
     };
     static uint8_t test_RGB32_to_YUV420 [8 * 4 * 2] =
     {
@@ -399,6 +399,11 @@ static int syntetic_test()
     colorspace_convert<RGB24, NV12, BT_601> (info);
     print_planar( info ) ;
 
+
+    std::cout << "RGB32 to RGB24-------------------------\n";
+    set_meta <RGB32, RGB24 >(info, 8, 2, test_RGB32);
+    colorspace_convert<RGB32, RGB24, BT_601> (info);
+    print_interleaved( info ) ;
 
 
     //*****************************************************************
@@ -579,8 +584,9 @@ static int syntetic_test()
 */
 
     std::cout << "Multiframe test\n";
+    //std::cout << "RGB32 to RGB24-------------------------\n";
     //std::cout << "RGB32 to A2R10G10B10-------------------------\n";
-    std::cout << "RGB24 to NV12-------------------------\n";
+    //std::cout << "RGB24 to NV12-------------------------\n";
 
     srand( time( NULL ) );
     int fnum, wid, hei;
@@ -593,13 +599,14 @@ static int syntetic_test()
             for( int x = 0; x < wid * 4; ++x ) {
                 frame[ fr * wid * 4 * hei  + y * wid * 4 + x] = rand() % 256;
             }
-
-    set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
+    set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
+    //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
     //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
 
     clock_t t1 = clock();
+    colorspace_convert<RGB32, RGB24, BT_601> (info);
     //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
-    colorspace_convert<RGB24, NV12, BT_601> (info);
+    //colorspace_convert<RGB24, NV12, BT_601> (info);
     clock_t t2 = clock();
     std::cout << "Time diff = " <<  t2 - t1 << std::endl;
     free( frame );

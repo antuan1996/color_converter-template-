@@ -434,6 +434,38 @@ static TARGET_INLINE __m128i pack_RGB32(VectorPixel rgb_data)
     vec = _mm_or_si128( vec, rgb_data.c );
     return vec;
 }
+static TARGET_INLINE __m128i pack_RGB24(VectorPixel rgb_data)
+{
+    // in memory    R G B
+    // in register  B G R
+    __m128i mask = _mm_set_epi8(0, 0, 0, 0,   0, 0, 0xFF, 0,    0, 0xFF, 0, 0,   0xFF, 0, 0, 0xFF);
+
+    rgb_data.a = _mm_or_si128( rgb_data.a, _mm_bsrli_si128( rgb_data.a, 1));
+    rgb_data.a = _mm_or_si128( rgb_data.a, _mm_bsrli_si128( rgb_data.a, 1));
+    rgb_data.a = _mm_or_si128( rgb_data.a, _mm_bsrli_si128( rgb_data.a, 1));
+    rgb_data.a = _mm_and_si128( rgb_data.a, mask );
+
+    rgb_data.b = _mm_or_si128( rgb_data.b, _mm_bsrli_si128( rgb_data.b, 1));
+    rgb_data.b = _mm_or_si128( rgb_data.b, _mm_bsrli_si128( rgb_data.b, 1));
+    rgb_data.b = _mm_or_si128( rgb_data.b, _mm_bsrli_si128( rgb_data.b, 1));
+    rgb_data.b = _mm_and_si128( rgb_data.b, mask );
+
+    rgb_data.c = _mm_or_si128( rgb_data.c, _mm_bsrli_si128( rgb_data.c, 1));
+    rgb_data.c = _mm_or_si128( rgb_data.c, _mm_bsrli_si128( rgb_data.c, 1));
+    rgb_data.c = _mm_or_si128( rgb_data.c, _mm_bsrli_si128( rgb_data.c, 1));
+    rgb_data.c = _mm_and_si128( rgb_data.c, mask );
+
+    //BLUE
+    __m128i vec = rgb_data.c;
+
+    //GREEN
+    vec = _mm_or_si128( vec, _mm_bslli_si128( rgb_data.b, 1));
+
+    //RED
+    vec = _mm_or_si128( vec, _mm_bslli_si128( rgb_data.a, 2));
+    return vec;
+}
+
 static TARGET_INLINE void pack_YUV422(VectorPixel& yuv_data)
 {
     yuv_data.b =_mm_avg_epu16( yuv_data.b ,_mm_slli_epi64(yuv_data.b, 32));
@@ -583,6 +615,14 @@ template < Colorspace cs > TARGET_INLINE void store(const ConvertMeta& meta, Con
         _mm_storel_epi64(( __m128i* )( dstb ), ctx.data1.b );
         return;
     }
+    if( cs == RGB24 )
+    {
+        _mm_storeu_si128(( __m128i* )( dsta ), ctx.data1.a );
+        _mm_storel_epi64(( __m128i* )( dsta + 16 ), ctx.data1.b );
+
+        _mm_storeu_si128(( __m128i* )( dst_na ), ctx.data2.a );
+        _mm_storel_epi64(( __m128i* )( dst_na + 16 ), ctx.data2.b );
+    }
 
 }
 
@@ -624,7 +664,24 @@ template <Colorspace cs> TARGET_INLINE void pack(Context& ctx, Context& ctx2 = 0
         ctx.data1.b = _mm_packs_epi32( ctx.data1.b, ctx2.data1.b );
         ctx.data1.b = _mm_packus_epi16( ctx.data1.b, _mm_setzero_si128());
     }
+    if( cs == RGB24 )
+    {
+        ctx.data1.a = pack_RGB24( ctx.data1 );
+        ctx.data1.b = pack_RGB24( ctx2.data1 );
+        ctx.data2.a = pack_RGB24( ctx.data2 );
+        ctx.data2.b = pack_RGB24( ctx2.data2 );
 
+        __m128i mask = _mm_set_epi32(0, 0, 0 , 0xFFFFFFFF );
+
+        ctx.bufa = _mm_and_si128(mask, ctx.data1.b);
+        ctx.data1.a = _mm_or_si128( _mm_bslli_si128( ctx.bufa, 12 ), ctx.data1.a );
+        ctx.data1.b = _mm_bsrli_si128( ctx.data1.b, 4);
+
+        ctx.bufb = _mm_and_si128(mask, ctx.data2.b);
+        ctx.data2.a = _mm_or_si128( _mm_bslli_si128( ctx.bufb, 12 ), ctx.data2.a );
+        ctx.data2.b = _mm_bsrli_si128( ctx.data2.b, 4);
+
+    }
 }
 
 static TARGET_INLINE __m128i  clip( __m128i data , const int32_t min_val, const int32_t max_val) {

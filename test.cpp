@@ -1,5 +1,5 @@
 //#define ENABLE_LOG
-//#define SSE2
+#define SSE2
 #define PACK_A2R10G10B10(a, b, c) ( pack10_in_int(a, b, c)  | (3 << 30) )
 
 #include <string>
@@ -175,8 +175,8 @@ static int syntetic_test()
      static uint8_t test_yuv422i_bt601[(8 * 2) * 2] =
 	{
 		235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
-        16,128,     16,128,    210,16,  210,146,   170,166,  170,16,  106,202, 106,222
-	};
+        235,128,    235,128,   81,90,   81,240,   145,54,   145,34,   41,240,  41,110,
+    };
     static uint8_t test_yuv444p_bt601[(8 * 2) * 3] =
 	{
 		// Y
@@ -213,10 +213,13 @@ static int syntetic_test()
         PACK_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),    PACK_A2R10G10B10(0x3FC, 0,0),      PACK_A2R10G10B10(0, 0x3FC, 0),     PACK_A2R10G10B10(0, 0, 0x3FC),
         PACK_A2R10G10B10(0x3FC, 0x3FC, 0),        PACK_A2R10G10B10(0, 0x3FC, 0x3FC), PACK_A2R10G10B10(0x3FC, 0, 0x3FC), PACK_A2R10G10B10(0x3FC, 0x3FC, 0x3FC),
     };
-    static uint8_t test_RGB24_to_A2R10G10B10 [8 * 3 * 2] =
+    static uint8_t test_RGB24_to_A2R10G10B10 [16 * 3 * 2] =
     {
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
+        255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255,
         255,255,255,   255,0,0,   0,255,0,   0,0,255,   255,255,0,   0,255,255,   255,0,255,   255,255,255
+
     };
     static uint8_t test_RGB32 [8 * 4 * 2] =
     {
@@ -256,6 +259,7 @@ static int syntetic_test()
         128, 90,  54, 240,   240, 54, 90,128,
         128, 240, 34, 110,  110, 34,  240, 128
     };
+
 
     static uint8_t test_yuv420p_bt601[(8 * 2) + 4 + 4] =
     {
@@ -363,14 +367,14 @@ static int syntetic_test()
     set_meta <YUYV, UYVY >(info, 8, 2, test_yuv422i_bt601);
     colorspace_convert<YUYV, YVYU, BT_601> (info);
     print_planar( info ) ;
-
+    */
 
     std::cout << "A2R10G10B10 to RGB32 interleaved\n";
     set_meta < A2R10G10B10, RGB32>(info, 8, 2, (uint8_t*)test_A2R10G10B10_bt601);
     colorspace_convert<A2R10G10B10, RGB32, BT_601> ( info );
     print_planar( info );
 
-
+    /*
     std::cout << "RGB32 to A2R10G10B10 interleaved\n";
     set_meta <RGB32, A2R10G10B10>(info, 8, 2, test_RGB32_to_A2R10G10B10);
     colorspace_convert<RGB32, A2R10G10B10, BT_601> ( info );
@@ -378,10 +382,27 @@ static int syntetic_test()
     std::cout << "Diff is " << check( (uint8_t*)(test_A2R10G10B10_bt601), info.dst_data[ 0 ], 8 * 4 * 2 ) << "\n";
     */
 
+/*
     std::cout << "NV12 to NV12-------------------------\n";
     set_meta <NV12, NV12 >(info, 8, 2, test_yuv420s_bt601, test_yuv420s_bt601 + 8 * 2);
     colorspace_convert<NV12, NV12, BT_601> (info);
     print_planar( info ) ;
+
+    std::cout << "YUYV to NV12-------------------------\n";
+    set_meta <YUYV, NV12 >(info, 8, 2, test_yuv422i_bt601 );
+    colorspace_convert<YUYV, NV12, BT_601> (info);
+    print_planar( info ) ;
+*/
+    std::cout << "YUYV to YVYU-------------------------\n";
+    set_meta <YUYV, YVYU >(info, 8, 2, test_yuv422i_bt601 );
+    colorspace_convert<YUYV, YVYU, BT_601> (info);
+    print_planar( info ) ;
+/*
+    std::cout << "NV12 to YUYV-------------------------\n";
+    set_meta <NV12, YUYV >(info, 8, 2, test_yuv420s_bt601, test_yuv420s_bt601 + 8 * 2);
+    colorspace_convert<NV12, YUYV, BT_601> (info);
+    print_planar( info ) ;
+
 
     std::cout << "NV12 to RGB32-------------------------\n";
     set_meta <NV12, RGB32 >(info, 8, 2, test_yuv420s_bt601, test_yuv420s_bt601 + 8 * 2);
@@ -404,6 +425,11 @@ static int syntetic_test()
     set_meta <RGB32, RGB24 >(info, 8, 2, test_RGB32);
     colorspace_convert<RGB32, RGB24, BT_601> (info);
     print_interleaved( info ) ;
+*/
+    std::cout << "RGB24 to RGB32-------------------------\n";
+    set_meta <RGB24, RGB32 >(info, 16, 2, test_RGB24_to_A2R10G10B10);
+    colorspace_convert<RGB24, RGB32, BT_601> (info);
+    print_planar( info ) ;
 
 
     //*****************************************************************
@@ -589,22 +615,31 @@ static int syntetic_test()
     //std::cout << "RGB24 to NV12-------------------------\n";
 
     srand( time( NULL ) );
-    int fnum, wid, hei;
-    fnum = 50;
-    wid = 640;
+    int fnum, wid, virt_wid, hei;
+    fnum = 5;
     hei = 480;
-    uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum * 4);
+    virt_wid = 640;
+    wid = virt_wid * 3;
+    uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum );
     for(int fr = 0; fr < fnum; ++fr)
         for( int y = 0; y < hei; ++y )
-            for( int x = 0; x < wid * 4; ++x ) {
-                frame[ fr * wid * 4 * hei  + y * wid * 4 + x] = rand() % 256;
+            for( int x = 0; x < wid; ++x ) {
+                frame[ fr * wid * hei  + y * wid + x] = rand() % 256;
             }
-    set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
+
+    //set_meta <YUYV, YVYU >(info, virt_wid, hei * fnum, frame);
+    //set_meta <YUYV, NV12 >(info, virt_wid, hei * fnum, frame);
+    set_meta <RGB24, RGB32>(info, virt_wid, hei * fnum, frame);
+    //set_meta <RGB24, A2R10G10B10>(info, virt_wid, hei * fnum, frame);
+    //set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
     //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
     //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
 
     clock_t t1 = clock();
-    colorspace_convert<RGB32, RGB24, BT_601> (info);
+    //colorspace_convert< YUYV, YVYU, BT_601> ( info );
+    //colorspace_convert< RGB24, A2R10G10B10, BT_601> ( info );
+    //colorspace_convert<RGB32, RGB24, BT_601> (info);
+    colorspace_convert<RGB24, RGB32, BT_601> (info);
     //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
     //colorspace_convert<RGB24, NV12, BT_601> (info);
     clock_t t2 = clock();

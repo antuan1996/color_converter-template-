@@ -317,12 +317,12 @@ template <Colorspace from_cs, Colorspace to_cs> void set_meta( ConvertMeta& meta
     meta.dst_data[ 2 ] = meta.dst_data[ 1 ] + meta.dst_stride_horiz[ 1 ] * meta.dst_stride_vert[ 1 ];
 }
 
-template<Colorspace cs> inline void get_pos(size_t& posa, size_t& posb, size_t& posc, const int cur_pos)
+template< Colorspace cs > inline void get_pos(size_t& posa, size_t& posb, size_t& posc, const int cur_pos)
 {
     posa = 0;
     posb = 0;
     posc = 0;
-    if (cs == RGB24 || cs == BGR24 )
+    if (cs == RGB24 || cs == BGR24)
     {
         posa = cur_pos * 3;
         return;

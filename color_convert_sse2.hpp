@@ -51,6 +51,16 @@ struct Context
 
 };
 
+template<Colorspace from_cs, Colorspace to_cs, int pix_x, int pix_y> inline void vget_pos(size_t& posa, size_t& posb, size_t& posc, const int cur_pos)
+{
+    if( from_cs != V210 && to_cs != V210 && pix_x > 0 )
+        return;
+    if( !IS_YUV420( from_cs ) && !IS_YUV420( to_cs ) && pix_y > 0 )
+        return;
+    cur_pos += pix_x;
+    get_pos( posa, posb, posc, cur_pos );
+}
+
 static inline uint32_t pack10_in_int(int32_t a, int32_t b, int32_t c)
 {
     // xx aaaaaaaaaa bbbbbbbbbb cccccccccc
@@ -199,6 +209,9 @@ template < Colorspace cs, int pix_num> TARGET_INLINE void load(ConvertMeta& meta
     if( pix_num == 1 )
     {
         srca += meta.src_stride[0];
+        srcb += meta.src_stride[0];
+        srcc += meta.src_stride[0];
+
         /*
          * replace in convert
         _mm_storeu_si128( (__m128i* )(ctx.spec.stack), ctx.data1.a);
@@ -208,8 +221,8 @@ template < Colorspace cs, int pix_num> TARGET_INLINE void load(ConvertMeta& meta
     }
     if(cs == YUYV || cs == YVYU )
     {
-        ctx.data1.a = _mm_loadu_si128( ( __m128i* )( srca ) );
-        ctx.data1.b = _mm_loadu_si128( ( __m128i* )( src_na ));
+        ctx.reserve.a = _mm_loadu_si128( ( __m128i* )( srca ) );
+        //ctx.data1.b = _mm_loadu_si128( ( __m128i* )( src_na ));
     }
     if( cs == A2R10G10B10 || cs == A2B10G10R10 || cs == Y210 || cs == RGB32)
     {
@@ -219,8 +232,9 @@ template < Colorspace cs, int pix_num> TARGET_INLINE void load(ConvertMeta& meta
     if( cs == NV12 )
     {
         ctx.data1.a = _mm_loadl_epi64( ( __m128i* )( srca ) );
-        ctx.data1.c = _mm_loadl_epi64( ( __m128i* )( src_na ) );
-        ctx.data1.b = _mm_loadl_epi64( ( __m128i* )( srcb ) );
+        //ctx.data1.c = _mm_loadl_epi64( ( __m128i* )( src_na ) );
+        if( pix_num == 0 )
+            ctx.data1.b = _mm_loadl_epi64( ( __m128i* )( srcb ) );
     }
     if ( cs == RGB24 )
     {
@@ -234,33 +248,25 @@ static TARGET_INLINE void unpack_YUV422_8bit( VectorPixel& data)
 {
     data.b =  _mm_or_si128( data.b, _mm_slli_epi32( data.b, 16 ) ); // ...  0 U 0 U
     data.c = _mm_or_si128( data.c, _mm_slli_epi32( data.c, 16 ) ); // ... 0 V 0 V
-
-    /*
-    data.a = _mm_unpacklo_epi16( data.a, _mm_setzero_si128() ); //  [Y] = 0 0 0 Y 0 0 0 Y 0 0 0 Y 0 0 0 Y
-    data.b = _mm_unpacklo_epi16( data.b, _mm_setzero_si128() ); //  [U] = 0 0 0 U 0 0 0 U 0 0 0 U 0 0 0 U
-    data.c = _mm_unpacklo_epi16( data.c, _mm_setzero_si128() ); //  [V] = 0 0 0 V 0 0 0 V 0 0 0 V 0 0 0 V
-    */
 }
-static TARGET_INLINE void unpack_YUYV( __m128i& vec, VectorPixel& data) {
-    // vec = v y u y v y u y v y u y v y u y
-    data.c = _mm_set1_epi16( 255 ); // store of mask
-    data.a = _mm_and_si128( data.c, vec );
+static TARGET_INLINE void unpack_YUYV(Context& ctx) {
+    // data = v y u y v y u y v y u y v y u y
+    ctx.reserve.c = _mm_set1_epi16( 255 ); // store of mask
+    ctx.data1.a = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    data.b = _mm_srli_epi32( data.c, 8 );
+    ctx.reserve.c = _mm_srli_epi32( ctx.reserve.c, 8 );
     // u =  ..... 00 00 FF 00, 00 00 FF 00,
-    data.b = _mm_and_si128( data.b, vec );
+    ctx.data1.b = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    data.c = _mm_slli_epi32( data.c, 24 );
-    // v =  ..... FF 00 00 00, FF 00 00 00,
+    ctx.reserve.c = _mm_slli_epi32( ctx.reserve.c, 16 );
+     // v =  ..... FF 00 00 00, FF 00 00 00,
 
-    data.c = _mm_and_si128( data.c, vec );
+    ctx.data1.c = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    vec = _mm_setzero_si128();
+    ctx.data1.b = _mm_srli_epi32( ctx.data1.b, 8 ); // ... 0 0 0 U
+    ctx.data1.c = _mm_srli_epi32( ctx.data1.c, 24 ); // ... 0 0 0 V
 
-    data.b = _mm_srli_epi32( data.b, 8 ); // ... 0 0 0 U
-    data.c = _mm_srli_epi32( data.c, 24 ); // ... 0 0 0 V
-
-    unpack_YUV422_8bit( data );
+    unpack_YUV422_8bit( ctx.data1 );
 }
 static TARGET_INLINE void unpack_RGB24(__m128i& vec, VectorPixel& data) {
     // vec = 0 0 0 0 b g r b g r b g r b g r
@@ -284,23 +290,23 @@ static TARGET_INLINE void unpack_RGB24(__m128i& vec, VectorPixel& data) {
     data.c = _mm_unpacklo_epi16( data.c, _mm_setzero_si128() );
 }
 
-static TARGET_INLINE VectorPixel unpack_YVYU( __m128i& vec, VectorPixel& data ) {
-    // vec = 0 0 0 0 0 0 0 0 u y v y u y v y
-    data.c = _mm_set1_epi16( 255 ); // store of mask
-    data.a = _mm_and_si128( data.c, vec );
+static TARGET_INLINE void unpack_YVYU( Context& ctx) {
+    // vec = ... u y v y u y v y
+    ctx.reserve.c = _mm_set1_epi16( 255 ); // store of mask
+    ctx.data1.a = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    // u =  ..... FF 00 00 00, FF 00 00 00,
-    data.b = _mm_slli_epi32( data.c, 24 );
-    data.b = _mm_and_si128( data.b, vec );
+    ctx.reserve.c = _mm_srli_epi32( ctx.reserve.c, 8 );
+    // u =  ..... 00 00 FF 00, 00 00 FF 00,
+    ctx.data1.c = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    // v =  ..... 00 00 FF 00, 00 00 FF 00,
-    data.c = _mm_srli_epi32( data.c, 8 );
-    data.c = _mm_and_si128( data.c, vec );
+    ctx.reserve.c = _mm_slli_epi32( ctx.reserve.c, 16 );
+     // v =  ..... FF 00 00 00, FF 00 00 00,
+    ctx.data1.b = _mm_and_si128( ctx.reserve.c, ctx.reserve.a);
 
-    data.b = _mm_srli_epi32( data.b, 24 ); // ... 0 0 0 U
-    data.c = _mm_srli_epi32( data.c, 8 ); // ... 0 0 0 V
+    ctx.data1.b = _mm_srli_epi32( ctx.data1.c, 24 ); // ... 0 0 0 V
+    ctx.data1.c = _mm_srli_epi32( ctx.data1.b, 8 ); // ... 0 0 0 U
 
-    unpack_YUV422_8bit( data );
+    unpack_YUV422_8bit( ctx.data1 );
 }
 static TARGET_INLINE void unpack_Y210( __m128i& vec, VectorPixel& data) {
 
@@ -350,19 +356,23 @@ static TARGET_INLINE VectorPixel unpack_A2B10G10R10( __m128i& vec1 , VectorPixel
     data.b = _mm_and_si128( _mm_srli_epi32( vec1, 10 ), data.c );
     data.a = _mm_and_si128( _mm_srli_epi32( vec1, 20 ), data.c );
 }
-static TARGET_INLINE VectorPixel unpack_NV12( Context& ctx )
+static TARGET_INLINE void unpack_NV12( Context& ctx )
 {
-    // TODO  FIX IT
-    /*
-    ctx.reserve.a = _mm_set_epi32( 0, 0xFF, 0 , 0xFF );
-    ctx.reserve.b = ctx.data1.b;
+    //in register
+    // y y y y
+    // v u v u
+    ctx.data1.a = _mm_unpacklo_epi8( ctx.reserve.a, _mm_setzero_si128() );
+    ctx.reserve.b = _mm_unpacklo_epi8( ctx.reserve.b, _mm_setzero_si128() );
+    // ... 0 v 0 u 0 v 0 u
+    ctx.reserve.c = _mm_set1_epi32( 0xFF );
 
-    ctx.data1.b = _mm_and_si128( ctx.data1.b, ctx.reserve.a);
-    ctx.data1.b = _mm_or_si128( ctx.data1.b, _mm_slli_epi64( ctx.data1.b, 32 ) );
+    ctx.data1.b = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+    ctx.reserve.c = _mm_srai_epi32( ctx.reserve.c, 16 );
 
-    ctx.reserveata.c = _mm_and_si128( uv, _mm_slli_epi64( y, 32 ) );
-    data.c = _mm_or_si128( data.c, _mm_srli_epi64( data.c, 32 ) );
-    */
+    ctx.data1.c = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+    ctx.data1.c = _mm_srai_epi32( ctx.data1.c, 16 );
+
+    unpack_YUV422_8bit( ctx.data1 );
 }
 
 static TARGET_INLINE void separate_RGB24( VectorPixel& data, __m128i& last)
@@ -427,13 +437,11 @@ template < Colorspace cs> TARGET_INLINE void unpack ( Context& ctx, Context& ctx
 
     }
 }
-
-template < Colorspace from_cs> TARGET_INLINE void unpack ( register Context& ctx) __attribute__((__vectorcall));
-template < Colorspace from_cs> TARGET_INLINE void unpack ( register Context& ctx)
+template < Colorspace from_cs, int pix_x = 0, int pix_y = 0> TARGET_INLINE void unpack ( register Context& ctx)
 {
     if(from_cs == YUYV)
     {
-        unpack_YUYV( ctx.data1.a, ctx.data1 );
+        unpack_YUYV( ctx );
         //unpack_YUYV( ctx.reserve.a, ctx.reserve );
         return;
     }
@@ -477,6 +485,50 @@ template < Colorspace from_cs> TARGET_INLINE void unpack ( register Context& ctx
     {
         unpack_Y210( ctx.data1.a, ctx.data1 );
         //unpack_Y210( ctx.reserve.a, ctx.reserve );
+    }
+    if( from_cs == NV12 )
+    {
+        //in register
+        // y y y y
+        // v u v u
+        ctx.data1.a = _mm_unpacklo_epi8( ctx.reserve.a, _mm_setzero_si128() );
+
+        if( pix_num == 0)
+        {
+            ctx.reserve.b = _mm_unpacklo_epi8( ctx.reserve.b, _mm_setzero_si128() );
+            // ... 0 v 0 u 0 v 0 u
+            ctx.reserve.c = _mm_set1_epi32( 0xFF );
+
+            ctx.data1.b = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+            ctx.reserve.c = _mm_srai_epi32( ctx.reserve.c, 16 );
+
+            ctx.data1.c = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+            ctx.data1.c = _mm_srai_epi32( ctx.data1.c, 16 );
+
+            unpack_YUV422_8bit( ctx.data1 );
+        }
+    }
+    if( from_cs == NV21 )
+    {
+        //in register
+        // y y y y
+        // u v u v
+        ctx.data1.a = _mm_unpacklo_epi8( ctx.reserve.a, _mm_setzero_si128() );
+
+        if( pix_num == 0)
+        {
+            ctx.reserve.b = _mm_unpacklo_epi8( ctx.reserve.b, _mm_setzero_si128() );
+            // ... 0 u 0 v 0 u 0 v
+            ctx.reserve.c = _mm_set1_epi32( 0xFF );
+
+            ctx.data1.c = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+            ctx.reserve.c = _mm_srai_epi32( ctx.reserve.c, 16 );
+
+            ctx.data1.b = _mm_and_si128( ctx.reserve.b, ctx.reserve.c);
+            ctx.data1.b = _mm_srai_epi32( ctx.data1.c, 16 );
+
+            unpack_YUV422_8bit( ctx.data1 );
+        }
     }
 
 
@@ -524,72 +576,67 @@ static TARGET_INLINE void pack_YUV422(VectorPixel& yuv_data)
     yuv_data.c = _mm_srli_epi32(yuv_data.c, 16);
     //yuv_data.c = _mm_packs_epi32( yuv_data.c ,_mm_setzero_si128());
 }
-static TARGET_INLINE void pack_YUV420(VectorPixel& yuv_data1, VectorPixel yuv_reserve)
+static TARGET_INLINE void pack_YUV420(Context& ctx)
 {
-    yuv_data1.b = _mm_avg_epu16( yuv_data1.b, _mm_slli_epi64( yuv_data1.b, 32) );
-    yuv_reserve.b = _mm_avg_epu16( yuv_reserve.b, _mm_slli_epi64( yuv_reserve.b, 32) );
-    yuv_data1.b = _mm_srli_epi64( yuv_data1.b, 32);
-    yuv_reserve.b = _mm_srli_epi64( yuv_reserve.b, 32);
-    yuv_data1.b = _mm_avg_epu16( yuv_data1.b, yuv_reserve.b);
-    //yuv_data1.b = _mm_packs_epi32( yuv_data1.b, _mm_setzero_si128() );
+    ctx.data1.b = _mm_avg_epu16( ctx.data1.b, _mm_slli_epi64( ctx.data1.b, 32) );
+    ctx.reserve.b = _mm_avg_epu16( ctx.reserve.b, _mm_slli_epi64( ctx.reserve.b, 32) );
+    ctx.data1.b = _mm_srli_epi64( ctx.data1.b, 32);
+    ctx.reserve.b = _mm_srli_epi64( ctx.reserve.b, 32);
+    ctx.data1.b = _mm_avg_epu16( ctx.data1.b, ctx.reserve.b);
+    //ctx.data1.b = _mm_packs_epi32( ctx.data1.b, _mm_setzero_si128() );
 
-    yuv_data1.c = _mm_avg_epu16( yuv_data1.c, _mm_slli_epi64( yuv_data1.c, 32) );
-    yuv_reserve.c = _mm_avg_epu16( yuv_reserve.c, _mm_slli_epi64( yuv_reserve.c, 32) );
-    yuv_data1.c = _mm_srli_epi64( yuv_data1.c, 32);
-    yuv_reserve.c = _mm_srli_epi64( yuv_reserve.c, 32);
-    yuv_data1.c = _mm_avg_epu16( yuv_data1.c, yuv_reserve.c);
-    //yuv_reserve.c = _mm_packs_epi32( yuv_reserve.c, _mm_setzero_si128() );
+    ctx.data1.c = _mm_avg_epu16( ctx.data1.c, _mm_slli_epi64( ctx.data1.c, 32) );
+    ctx.reserve.c = _mm_avg_epu16( ctx.reserve.c, _mm_slli_epi64( ctx.reserve.c, 32) );
+    ctx.data1.c = _mm_srli_epi64( ctx.data1.c, 32);
+    ctx.reserve.c = _mm_srli_epi64( ctx.reserve.c, 32);
+    ctx.data1.c = _mm_avg_epu16( ctx.data1.c, ctx.reserve.c);
+    //ctx.reserve.c = _mm_packs_epi32( ctx.reserve.c, _mm_setzero_si128() );
 }
 
-static TARGET_INLINE __m128i pack_YVYU( VectorPixel yuv_data )
+static TARGET_INLINE void pack_YVYU(Context& ctx)
 {
     // in memory    Y V Y U
     // in register  U Y V Y
-    pack_YUV422( yuv_data );
+    pack_YUV422( ctx.data1 );
 
-    __m128i vec = _mm_setzero_si128();
+    ctx.reserve.a = _mm_setzero_si128();
 
     //Y
     //yuv_data.a = _mm_packs_epi32( yuv_data.a, vec );
-    vec = _mm_or_si128( vec, yuv_data.a );
+    ctx.reserve.a = _mm_or_si128( ctx.data1.a, ctx.reserve.a );
 
     //U
     // 0 0 0 u 0 0 0 u
-    yuv_data.b = _mm_slli_epi32(yuv_data.b, 24);
-    vec = _mm_or_si128(yuv_data.b, vec );
+    ctx.data1.b = _mm_slli_epi32(ctx.data1.b, 24);
+    ctx.reserve.a = _mm_or_si128(ctx.data1.b, ctx.reserve.a );
 
     //V
     // 0 0 0 v 0 0 0 v
-    yuv_data.c = _mm_slli_epi32(yuv_data.c, 8);
-    vec = _mm_or_si128( vec, yuv_data.c );
-    return vec;
+    ctx.data1.c = _mm_slli_epi32(ctx.data1.c, 8);
+    ctx.reserve.a = _mm_or_si128( ctx.data1.c, ctx.reserve.a );
 }
-static TARGET_INLINE __m128i pack_YUYV(VectorPixel yuv_data)
+static TARGET_INLINE void pack_YUYV(Context& ctx)
 {
     // in memory    Y U Y V
     // in register  V Y U Y
 
-    pack_YUV422( yuv_data );
+     pack_YUV422( ctx.data1 );
 
-    __m128i vec = _mm_setzero_si128();
+    ctx.reserve.a = _mm_setzero_si128();
 
     //Y
     //yuv_data.a = _mm_packs_epi32( yuv_data.a, vec );
-    vec = _mm_or_si128( vec, yuv_data.a );
+    ctx.reserve.a = _mm_or_si128( ctx.data1.a, ctx.reserve.a );
 
     //U
-    //yuv_data.b = _mm_packs_epi32( yuv_data.b ,_mm_setzero_si128());
     // 0 0 0 u 0 0 0 u
-    yuv_data.b = _mm_slli_epi32(yuv_data.b, 8);
-    vec = _mm_or_si128(yuv_data.b, vec );
+    ctx.data1.b = _mm_slli_epi32(ctx.data1.b, 8);
+    ctx.reserve.a = _mm_or_si128(ctx.data1.b, ctx.reserve.a );
 
     //V
-    //yuv_data.c = _mm_packs_epi32( yuv_data.c ,_mm_setzero_si128());
     // 0 0 0 v 0 0 0 v
-    yuv_data.c = _mm_slli_epi32(yuv_data.c, 24);
-    vec = _mm_or_si128( vec, yuv_data.c );
-
-    return vec;
+    ctx.data1.c = _mm_slli_epi32(ctx.data1.c, 24);
+    ctx.reserve.a = _mm_or_si128( ctx.data1.c, ctx.reserve.a );
 }
 static TARGET_INLINE __m128i pack_A2B10G10R10( VectorPixel rgb_data )
 {
@@ -628,9 +675,22 @@ static TARGET_INLINE __m128i pack_A2R10G10B10( VectorPixel rgb_data)
     vec = _mm_or_si128( vec, rgb_data.a );
     return vec;
 }
-static TARGET_INLINE __m128i pack_NV12( VectorPixel& yuv_data )
+static TARGET_INLINE __m128i pack_NV12( Context& ctx)
 {
-    yuv_data.b = _mm_or_si128( yuv_data.b, _mm_slli_epi64( yuv_data.c, 32));
+    ctx.reserve.a = _mm_loadu_si128( ( __m128i* )ctx.spec.stack );
+    ctx.reserve.b = _mm_loadu_si128( ( __m128i* )ctx.spec.stack + 16 );
+    ctx.reserve.c = _mm_loadu_si128( ( __m128i* )ctx.spec.stack + 32 );
+
+    pack_YUV420( ctx );
+    ctx.data1.b = _mm_packs_epi32( ctx.data1.b, _mm_setzero_si128() );
+    ctx.data1.c = _mm_packs_epi32( ctx.data1.b, _mm_setzero_si128() );
+    ctx.data1.b = _mm_or_si128( ctx.data1.b, _mm_slli_epi16( ctx.data1.c, 8 ) );
+
+    ctx.reserve.b = ctx.reserve.a;
+    ctx.reserve.a = ctx.data1.a;
+    ctx.reserve.c = ctx.data1.b;
+
+
 }
 
 template < Colorspace cs, int pix_num > TARGET_INLINE void store(const ConvertMeta& meta, register Context& ctx,  uint8_t* dsta, uint8_t* dstb, uint8_t* dstc)
@@ -651,15 +711,15 @@ template < Colorspace cs, int pix_num > TARGET_INLINE void store(const ConvertMe
     {
         //ctx.reserve.a = _mm_srli_si128( ctx.reserve.a, 8);
         //ctx.reserve.b = _mm_srli_si128( ctx.reserve.b, 8);
-        _mm_store_si128(( __m128i* )( dsta ), ctx.data1.a );
-        _mm_store_si128(( __m128i* )( dst_na ), ctx.data1.b );
+        _mm_store_si128(( __m128i* )( dsta ), ctx.reserve.a );
+        //_mm_store_si128(( __m128i* )( dst_na ), ctx.data1.b );
         return;
     }
     if(cs == NV12 || cs == NV21)
     {
-        _mm_storel_epi64(( __m128i* )( dsta ), ctx.data1.a );
-        _mm_storel_epi64(( __m128i* )( dst_na ), ctx.data1.c );
-        _mm_storel_epi64(( __m128i* )( dstb ), ctx.data1.b );
+        _mm_storel_epi64(( __m128i* )( dsta ), ctx.reserve.a );
+        _mm_storel_epi64(( __m128i* )( dst_na ), ctx.reserve.b );
+        _mm_storel_epi64(( __m128i* )( dstb ), ctx.reserve.c );
         return;
     }
     if( cs == RGB24 )
@@ -713,8 +773,7 @@ template <Colorspace cs> TARGET_INLINE void pack(register Context& ctx, register
 
 
 }
-template <Colorspace cs> TARGET_INLINE void pack(register Context& ctx) __attribute__((__vectorcall));
-template <Colorspace cs> TARGET_INLINE void pack(register Context& ctx)
+template <Colorspace cs, int pix_x = 0, int pix_y = 0> TARGET_INLINE void pack(register Context& ctx)
 {
     if( cs == RGB32 )
     {
@@ -735,12 +794,12 @@ template <Colorspace cs> TARGET_INLINE void pack(register Context& ctx)
     }
     if(cs == YVYU)
     {
-        ctx.reserve.a = pack_YVYU( ctx.data1 );
+        pack_YVYU( ctx );
         //ctx.reserve.b = pack_YVYU( ctx.reserve );
     }
     if(cs == YUYV)
     {
-        ctx.reserve.a = pack_YUYV( ctx.data1 );
+        pack_YUYV( ctx );
         //ctx.reserve.b = pack_YUYV( ctx.reserve );
     }
 
@@ -976,7 +1035,33 @@ template <Colorspace cs> TARGET_INLINE void next_row (uint8_t* &ptr_a, uint8_t* 
     }
 
 }
-template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_convert(ConvertMeta& meta)
+template< Colorspace from_cs, Colorspace to_cs, Standard st, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void convert_tick( uint8_t* src_a, uint8_t* src_b, uint8_t* src_c,
+                                                                                                                             uint8_t* dst_a, uint8_t* dst_b, uint8_t* dst_c,
+                                                                                                                             ConvertMeta& meta, Context ctx,  int x)
+{
+    static size_t shift_a, shift_b, shift_c;
+    vget_pos <from_cs, pix_x, pix_y>(shift_a, shift_b, shift_c, x);
+    load < from_cs, pix_x, pix_y> (meta, ctx,
+                            src_a + shift_a,
+                            src_b + shift_b,
+                            src_c + shift_c);
+
+    unpack <from_cs , pix_x, pix_y> ( ctx );
+
+
+    scale<from_cs, to_cs >( ctx.data1.a, ctx.data1.b, ctx.data1.c );
+    transform <from_cs, to_cs > ( ctx );
+
+    pack< to_cs, pix_x, pix_y>( ctx );
+
+    vget_pos <to_cs, pix_x, pix_y>(shift_a, shift_b, shift_c, x);
+    store<to_cs, pix_x, pix_y> (meta, ctx,
+                         dst_a + shift_a,
+                         dst_b + shift_b,
+                         dst_c + shift_c);
+
+}
+template< Colorspace from_cs, Colorspace to_cs, Standard st > void colorspace_convert(ConvertMeta& meta)
 {
 
     uint8_t* src_a = meta.src_data[0];
@@ -991,15 +1076,15 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
     //init_offset_yuv < from_cs, to_cs >( context1 );
     //set_transform_coeffs <from_cs, to_cs, st>( context1 );
 
-    int8_t step;
+    int8_t step_x;
     //if(from_cs == V210 || to_cs == V210)
     //    step = 6;
     if( IS_MULTISTEP( from_cs ) || IS_MULTISTEP( to_cs ))
-        step = 16;
+        step_x = 16;
     else
-        step = 8;
+        step_x = 8;
     size_t x,y;
-    size_t shift_a, shift_b, shift_c;
+
     /*
     if(from_cs == V210 && to_cs == V210)
     {
@@ -1008,171 +1093,16 @@ template<Colorspace from_cs, Colorspace to_cs, Standard st> void colorspace_conv
     else
     */
     for(y = 0; y < meta.height; y += 2) {
-        for(x = 0; x+step <= meta.width; x += step) {
-            // Process 2 x 2(Step) pixels
+        for(x = 0; x+step <= meta.width; x += step_x) {
+            convert_tick < from_cs, to_cs, st, 0, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+            convert_tick < from_cs, to_cs, st, 1, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+            convert_tick < from_cs, to_cs, st, 2, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
 
-            //if(to_cs == V210 && from_cs != V210)
-            if( !IS_MULTISTEP( from_cs ) && IS_MULTISTEP( to_cs ) )
-            {
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-                load < from_cs, 0> (meta, context1,
-                                        src_a + shift_a,
-                                        src_b + shift_b,
-                                        src_c + shift_c);
-
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x + 4);
-                load < from_cs, 0> (meta, context1,
-                                            src_a + shift_a,
-                                            src_b + shift_b,
-                                            src_c + shift_c);
-                unpack <from_cs> (context1, context1);
-                unpack <from_cs> (context1, context1);
-
-                transform <from_cs, to_cs> (context1 );
-                transform <from_cs, to_cs> (context1 );
-
-                pack< to_cs >(context1, context1);
-
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-                store<to_cs, 0> (meta, context1,
-                                     dst_a + shift_a,
-                                     dst_b + shift_b,
-                                     dst_c + shift_c);
-            }
-            //else if(from_cs == V210 && to_cs != V210)
-            else if( IS_MULTISTEP( from_cs ) && !IS_MULTISTEP( to_cs))
-            {
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-                load < from_cs, 0> (meta, context1,
-                                            src_a + shift_a,
-                                            src_b + shift_b,
-                                            src_c + shift_c);
-                unpack <from_cs> (context1, context1);
-
-                transform <from_cs, to_cs> (context1 );
-                transform <from_cs, to_cs> (context1 );
-
-                pack< to_cs >(context1, context1);
-                pack< to_cs >(context1, context1);
-
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-                store< to_cs, 0> (meta, context1,
-                                     dst_a + shift_a,
-                                     dst_b + shift_b,
-                                     dst_c + shift_c);
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x + step / 2);
-                store< to_cs, 0> (meta, context1,
-                                     dst_a + shift_a,
-                                     dst_b + shift_b,
-                                     dst_c + shift_c);
-            }
-            //else if(from_cs != V210 && to_cs != V210)
-            if( !IS_MULTISTEP( from_cs ) && !IS_MULTISTEP( to_cs ) )
-            {
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-                load < from_cs, 0> (meta, context1,
-                                        src_a + shift_a,
-                                        src_b + shift_b,
-                                        src_c + shift_c);
-                unpack <from_cs> (context1);
-
-
-                scale<from_cs, to_cs>( context1.data1.a, context1.data1.b, context1.data1.c );
-                if( (IS_RGB(from_cs) && IS_YUV(to_cs)) || (IS_YUV(from_cs) && IS_RGB(to_cs)))
-                    transform <from_cs, to_cs> ( context1 );
-
-                pack<to_cs > (context1);
-
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-                store<to_cs, 0> (meta, context1,
-                                             dst_a + shift_a,
-                                             dst_b + shift_b,
-                                             dst_c + shift_c);
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-                load < from_cs, 1> (meta, context1,
-                                        src_a + shift_a,
-                                        src_b + shift_b,
-                                        src_c + shift_c);
-                unpack <from_cs> ( context1 );
-
-                scale<from_cs, to_cs>( context1.data1.a, context1.data1.b, context1.data1.c );
-                if( (IS_RGB(from_cs) && IS_YUV(to_cs)) || (IS_YUV(from_cs) && IS_RGB(to_cs)))
-                    transform <from_cs, to_cs> ( context1 );
-
-
-                pack<to_cs > ( context1 );
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-                store<to_cs, 1> (meta, context1,
-                                             dst_a + shift_a,
-                                             dst_b + shift_b,
-                                             dst_c + shift_c);
-
-
-            }
-            if( IS_MULTISTEP( from_cs ) && IS_MULTISTEP( to_cs ) )
-            {
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-                load < from_cs, 0> (meta, context1,
-                                        src_a + shift_a,
-                                        src_b + shift_b,
-                                        src_c + shift_c);
-
-                unpack <from_cs> (context1, context1);
-
-                transform <from_cs, to_cs> (context1 );
-                transform <from_cs, to_cs> (context1 );
-
-                pack<to_cs > (context1, context1);
-
-                get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-                store<to_cs, 0> (meta, context1,
-                                             dst_a + shift_a,
-                                             dst_b + shift_b,
-                                             dst_c + shift_c);
-            }
+            convert_tick < from_cs, to_cs, st, 0, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+            convert_tick < from_cs, to_cs, st, 1, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+            convert_tick < from_cs, to_cs, st, 2, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
 
         }
-        // finish line
-        if(meta.width % step != 0  && to_cs == V210 && from_cs != V210)
-        {
-            context1.data1.a = _mm_setzero_si128();
-            context1.data1.b = _mm_setzero_si128();
-            context1.data1.c = _mm_setzero_si128();
-
-            //context1.reserve.a = _mm_setzero_si128();
-            //context1.reserve.b = _mm_setzero_si128();
-            //context1.reserve.c = _mm_setzero_si128();
-
-            get_pos <from_cs>(shift_a, shift_b, shift_c, x);
-            load < from_cs, 0> (meta, context1,
-                                    src_a + shift_a,
-                                    src_b + shift_b,
-                                    src_c + shift_c);
-
-            if(meta.width % 6 >= 4) //==4
-            {
-                get_pos <from_cs>(shift_a, shift_b, shift_c, x + 2);
-                load < from_cs, 0> (meta, context1,
-                                        src_a + shift_a,
-                                        src_b + shift_b,
-                                        src_c + shift_c);
-            }
-
-            unpack <from_cs> (context1, context1);
-            unpack <from_cs> (context1, context1);
-
-            transform <from_cs, to_cs> (context1 );
-            transform <from_cs, to_cs> (context1 );
-
-            pack< to_cs >(context1, context1);
-
-            get_pos <to_cs>(shift_a, shift_b, shift_c, x);
-            store<to_cs, 0> (meta, context1,
-                                 dst_a + shift_a,
-                                 dst_b + shift_b,
-                                 dst_c + shift_c);
-        }
-
         next_row <from_cs> (src_a, src_b, src_c, meta.src_stride);
         next_row <to_cs> (dst_a, dst_b, dst_c, meta.dst_stride_horiz);
 	}

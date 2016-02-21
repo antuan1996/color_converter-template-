@@ -615,36 +615,47 @@ static int syntetic_test()
     //std::cout << "RGB24 to NV12-------------------------\n";
 
     srand( time( NULL ) );
-    int fnum, wid, virt_wid, hei;
-    fnum = 5;
-    hei = 480;
-    virt_wid = 640;
-    wid = virt_wid * 3;
-    uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum );
-    for(int fr = 0; fr < fnum; ++fr)
-        for( int y = 0; y < hei; ++y )
-            for( int x = 0; x < wid; ++x ) {
-                frame[ fr * wid * hei  + y * wid + x] = rand() % 256;
-            }
+    int tnum = 10;
+    size_t res = 0;
+    for( int k = 0; k < tnum; ++k )
+    {
 
-    //set_meta <YUYV, YVYU >(info, virt_wid, hei * fnum, frame);
-    //set_meta <YUYV, NV12 >(info, virt_wid, hei * fnum, frame);
-    set_meta <RGB24, RGB32>(info, virt_wid, hei * fnum, frame);
-    //set_meta <RGB24, A2R10G10B10>(info, virt_wid, hei * fnum, frame);
-    //set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
-    //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
-    //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
+        int fnum, wid, virt_wid, hei;
+        fnum = 100;
+        hei = 480;
+        virt_wid = 640;
+        wid = virt_wid * 4;
+        uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum );
+        for(int fr = 0; fr < fnum; ++fr)
+            for( int y = 0; y < hei; ++y )
+                for( int x = 0; x < wid; ++x ) {
+                    frame[ fr * wid * hei  + y * wid + x] = rand() % 256;
+                }
 
-    clock_t t1 = clock();
-    //colorspace_convert< YUYV, YVYU, BT_601> ( info );
-    //colorspace_convert< RGB24, A2R10G10B10, BT_601> ( info );
-    //colorspace_convert<RGB32, RGB24, BT_601> (info);
-    colorspace_convert<RGB24, RGB32, BT_601> (info);
-    //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
-    //colorspace_convert<RGB24, NV12, BT_601> (info);
-    clock_t t2 = clock();
-    std::cout << "Time diff = " <<  t2 - t1 << std::endl;
-    free( frame );
+        //set_meta <YUYV, YVYU >(info, virt_wid, hei * fnum, frame);
+        //set_meta <YUYV, NV12 >(info, virt_wid, hei * fnum, frame);
+        //set_meta <RGB24, RGB32>(info, virt_wid, hei * fnum, frame);
+        //set_meta <RGB24, YUYV>(info, virt_wid, hei * fnum, frame);
+        //set_meta <RGB24, A2R10G10B10>(info, virt_wid, hei * fnum, frame);
+        //set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
+        //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
+        //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
+        set_meta <RGB32, BGR32>(info, virt_wid, hei * fnum, frame);
+
+        clock_t t1 = clock();
+        //colorspace_convert< YUYV, YVYU, BT_601> ( info );
+        //colorspace_convert< RGB24, A2R10G10B10, BT_601> ( info );
+        //colorspace_convert<RGB32, RGB24, BT_601> (info);
+        //colorspace_convert<RGB24, RGB32, BT_601> (info);
+        colorspace_convert<RGB32, BGR32, BT_601> (info);
+        //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
+        //colorspace_convert<RGB24, NV12, BT_601> (info);
+        clock_t t2 = clock();
+        std::cout << "Time diff = " <<  t2 - t1 << std::endl;
+        res += t2 - t1;
+        free( frame );
+    }
+    std::cout << "average time is :" << ( res + ( tnum / 2 ) ) / tnum;
 
     return 0;
 }

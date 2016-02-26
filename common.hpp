@@ -13,8 +13,8 @@
 #include <malloc.h>
 
 #ifdef LINUX_BUILD
-#define TARGET_INLINE inline __attribute__((always_inline))
-//#define TARGET_INLINE inline
+//#define TARGET_INLINE inline __attribute__((always_inline))
+#define TARGET_INLINE inline
 #define TARGET_MEMALIGN(align, size) memalign( (align), (size))
 #define TARGET_FREEALIGN free
 #elif defined WINDOWS_BUILD

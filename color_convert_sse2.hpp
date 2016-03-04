@@ -17,12 +17,12 @@ typedef struct{
 }VectorPixel;
 
 typedef struct{
-    uint8_t row1[ 16 ];
-    uint8_t row2[ 16 ];
-    uint8_t row3[ 16 ];
-    uint8_t subrow1[ 16 ];
-    uint8_t subrow2[ 16 ];
-    uint8_t subrow3[ 16 ];
+    __m128i row1;
+    __m128i row2;
+    __m128i row3;
+    __m128i subrow1;
+    __m128i subrow2;
+    __m128i subrow3;
 }Matrix;
 
 /*
@@ -32,13 +32,13 @@ typedef struct{
 
 struct ConvertSpecific
 {
-    uint8_t voffset_y_from[ 16 ];
-    uint8_t voffset_u_from[ 16 ];
-    uint8_t voffset_v_from[ 16 ];
+    __m128i voffset_y_from;
+    __m128i voffset_u_from;
+    __m128i voffset_v_from;
 
-    uint8_t voffset_y_to[ 16 ];
-    uint8_t voffset_u_to[ 16 ];
-    uint8_t voffset_v_to[ 16 ];
+    __m128i voffset_y_to;
+    __m128i voffset_u_to;
+    __m128i voffset_v_to;
     __m128i stack[ 3 * 6];
     uint8_t sp = 0;
     Matrix t_matrix;
@@ -49,23 +49,21 @@ struct Context
 {
     VectorPixel data1;
     VectorPixel reserve;
-    ConvertSpecific spec;
-
 };
 
-TARGET_INLINE void push_stack( register Context& ctx )
+TARGET_INLINE void push_stack( register VectorPixel& pix, ConvertSpecific& spec )
 {
-    ctx.spec.stack[ ctx.spec.sp * 3 + 0 ] =  ctx.reserve.a;
-    ctx.spec.stack[ ctx.spec.sp * 3 + 1 ] =  ctx.reserve.b;
-    ctx.spec.stack[ ctx.spec.sp * 3 + 2 ] =  ctx.reserve.c;
-    ++ctx.spec.sp;
+    spec.stack[ spec.sp * 3 + 0 ] =  pix.a;
+    spec.stack[ spec.sp * 3 + 1 ] =  pix.b;
+    spec.stack[ spec.sp * 3 + 2 ] =  pix.c;
+    ++spec.sp;
 }
-TARGET_INLINE void pop_stack( register Context& ctx )
+TARGET_INLINE void pop_stack( register VectorPixel& pix, ConvertSpecific& spec)
 {
-    ctx.reserve.c = ctx.spec.stack[ ctx.spec.sp * 3 - 1 ];
-    ctx.reserve.b = ctx.spec.stack[ ctx.spec.sp * 3 - 2 ];
-    ctx.reserve.a = ctx.spec.stack[ ctx.spec.sp * 3 - 3 ];
-    --ctx.spec.sp;
+    pix.c = spec.stack[ spec.sp * 3 - 1 ];
+    pix.b = spec.stack[ spec.sp * 3 - 2 ];
+    pix.a = spec.stack[ spec.sp * 3 - 3 ];
+    --spec.sp;
 }
 template<Colorspace mainc, Colorspace otherc, int pix_x, int pix_y> inline void vget_pos(size_t& posa, size_t& posb, size_t& posc, int cur_pos)
 {
@@ -103,7 +101,7 @@ template <Colorspace from, Colorspace to> TARGET_INLINE void scale( register __m
     assert(0);
     //TODO unsupported formats
 }
-template <Colorspace mainc, Colorspace otherc> TARGET_INLINE void init_offset_yuv( register Context& ctx )
+template <Colorspace mainc, Colorspace otherc> TARGET_INLINE void init_offset_yuv( ConvertSpecific& spec)
 {
 
     // y+= 16 - result of range manipulation
@@ -114,10 +112,15 @@ template <Colorspace mainc, Colorspace otherc> TARGET_INLINE void init_offset_yu
     if(IS_YUV(mainc))
         scale < YUV444, mainc> ( offset_y, offset_u, offset_v);
 
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_y_from, offset_y);
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_u_from, offset_u);
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_v_from, offset_v);
+    spec.voffset_y_from = offset_y;
+    spec.voffset_u_from = offset_u;
+    spec.voffset_v_from = offset_v;
 
+    /*
+    _mm_storeu_si128( (__m128i* )spec.voffset_y_from, offset_y);
+    _mm_storeu_si128( (__m128i* )spec.voffset_u_from, offset_u);
+    _mm_storeu_si128( (__m128i* )spec.voffset_v_from, offset_v);
+    */
 
     offset_y = _mm_set1_epi16( 16 );
     offset_u = _mm_set1_epi16( 128 );
@@ -125,11 +128,15 @@ template <Colorspace mainc, Colorspace otherc> TARGET_INLINE void init_offset_yu
 
     if(IS_YUV(mainc))
         scale < YUV444, otherc> ( offset_y, offset_u, offset_v);
+    spec.voffset_y_to = offset_y;
+    spec.voffset_u_to  = offset_u;
+    spec.voffset_v_to = offset_v;
 
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_y_to, offset_y);
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_u_to, offset_u);
-    _mm_storeu_si128( (__m128i* )ctx.spec.voffset_v_to, offset_v);
-
+    /*
+    _mm_storeu_si128( (__m128i* )spec.voffset_y_to, offset_y);
+    _mm_storeu_si128( (__m128i* )spec.voffset_u_to, offset_u);
+    _mm_storeu_si128( (__m128i* )spec.voffset_v_to, offset_v);
+    */
 }
 
 template <Colorspace cs_from, Colorspace cs_to> TARGET_INLINE void convert_range(int32_t* matrix)
@@ -158,7 +165,7 @@ template <Colorspace cs_from, Colorspace cs_to> TARGET_INLINE void convert_range
         }
 }
 // TO DO new transform matrix
-template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs(register Context& ctx)
+template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs(ConvertSpecific& spec)
 {
    const int32_t* matrix = e_matrix;
    int32_t res_matrix[ 9 ];
@@ -199,23 +206,17 @@ template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs
             res_matrix[r*3 + 2] = matrix[ r*3 + 2 ];
         }
     convert_range < from, to >( res_matrix );
-    __m128i buf = _mm_set_epi16(res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.row1, buf);
+    spec.t_matrix.row1 = _mm_set_epi16(res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ],res_matrix[ 0 ],res_matrix[ 1 ]);
 
-    buf = _mm_set_epi16(res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.row2, buf);
+    spec.t_matrix.row2 = _mm_set_epi16(res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ],res_matrix[ 3 ],res_matrix[ 4 ]);
 
-    buf = _mm_set_epi16(res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.row3, buf);
+    spec.t_matrix.row3 = _mm_set_epi16(res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ],res_matrix[ 6 ],res_matrix[ 7 ]);
 
-    buf = _mm_set_epi16(0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.subrow1, buf);
+    spec.t_matrix.subrow1 = _mm_set_epi16(0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ], 0, res_matrix[ 2 ]);
 
-    buf = _mm_set_epi16(0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.subrow2, buf);
+    spec.t_matrix.subrow2 = _mm_set_epi16(0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ], 0, res_matrix[ 5 ]);
 
-    buf = _mm_set_epi16(0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ]);
-    _mm_storeu_si128( (__m128i* )ctx.spec.t_matrix.subrow3, buf);
+    spec.t_matrix.subrow3 = _mm_set_epi16(0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ]);
 }
 template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void load(ConvertMeta& meta, register Context& ctx, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
 {
@@ -239,6 +240,12 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
         _mm_storeu_si128( (__m128i* )(ctx.spec.stack + 16), ctx.data1.b);
         _mm_storeu_si128( (__m128i* )(ctx.spec.stack + 32), ctx.data1.c);
         */
+    }
+    if(mainc == YUV444)
+    {
+        ctx.reserve.a = _mm_loadl_epi64( ( __m128i* )( srca ) );
+        ctx.reserve.b = _mm_loadl_epi64( ( __m128i* )( srcb ) );
+        ctx.reserve.c = _mm_loadl_epi64( ( __m128i* )( srcc ) );
     }
     if(mainc == YUYV || mainc == YVYU )
     {
@@ -415,6 +422,7 @@ static TARGET_INLINE void separate_RGB24( VectorPixel& data, __m128i& last)
     buf = _mm_bsrli_si128( _mm_bslli_si128( data.c, 12), 4);
     data.c = _mm_or_si128( buf, _mm_bsrli_si128( prev_b, 8 ));
 }
+/*
 template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void unpack ( register Context& ctx, register Context& ctx2 )
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
@@ -468,13 +476,19 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TA
 
     }
 }
+*/
 template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void unpack ( register Context& ctx)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
         return;
     if( !IS_YUV420( mainc ) && !IS_YUV420( otherc ) && pix_y > 0 )
         return;
-
+    if( mainc == YUV444)
+    {
+        ctx.data1.a = _mm_unpacklo_epi8( ctx.reserve.a, _mm_setzero_si128() );
+        ctx.data1.b = _mm_unpacklo_epi8( ctx.reserve.b, _mm_setzero_si128() );
+        ctx.data1.c = _mm_unpacklo_epi8( ctx.reserve.c, _mm_setzero_si128() );
+    }
     if(mainc == YUYV)
     {
         unpack_YUYV( ctx );
@@ -714,9 +728,9 @@ static TARGET_INLINE __m128i pack_A2R10G10B10( VectorPixel rgb_data)
     vec = _mm_or_si128( vec, rgb_data.a );
     return vec;
 }
-static TARGET_INLINE __m128i pack_NV12( register Context& ctx)
+static TARGET_INLINE __m128i pack_NV12( register Context& ctx, ConvertSpecific& spec)
 {
-    pop_stack( ctx );
+    pop_stack( ctx.reserve, spec);
     pack_YUV420( ctx );
 
     ctx.data1.b = _mm_packs_epi32( ctx.data1.b, ctx.reserve.b);
@@ -729,10 +743,10 @@ static TARGET_INLINE __m128i pack_NV12( register Context& ctx)
     ctx.reserve.b = ctx.data1.a;
     ctx.reserve.c = ctx.data1.b;
 }
-static TARGET_INLINE void  pack_NV21( register Context& ctx )
+static TARGET_INLINE void  pack_NV21( register Context& ctx, ConvertSpecific& spec)
 {
     // reg ...uvuvuv
-    pop_stack( ctx );
+    pop_stack( ctx.reserve, spec );
     pack_YUV420( ctx );
 
     ctx.data1.b = _mm_packs_epi32( ctx.data1.b, _mm_setzero_si128());
@@ -748,7 +762,7 @@ static TARGET_INLINE void  pack_NV21( register Context& ctx )
     ctx.reserve.c = ctx.data1.b;
 }
 
-template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void store(const ConvertMeta& meta, register Context& ctx,  uint8_t* dsta, uint8_t* dstb, uint8_t* dstc)
+template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void store(const ConvertMeta& meta, register Context& ctx, ConvertSpecific& spec,  uint8_t* dsta, uint8_t* dstb, uint8_t* dstc)
 {
 
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
@@ -763,7 +777,13 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
     {
         //dsta += meta.dst_stride_horiz[ 0 ];
     }
-    if(mainc == YUV444 || mainc == RGB32 || mainc == BGR32 || mainc == A2R10G10B10 || mainc == A2B10G10R10)
+    if( mainc == YUV444 )
+    {
+        _mm_storel_epi64(( __m128i* )( dsta ), ctx.reserve.a );
+        _mm_storel_epi64(( __m128i* )( dstb ), ctx.reserve.b );
+        _mm_storel_epi64(( __m128i* )( dstc ), ctx.reserve.c );
+    }
+    if(mainc == RGB32 || mainc == BGR32 || mainc == A2R10G10B10 || mainc == A2B10G10R10)
     {
         if( pix_y == 1 )
             dsta = dst_na;
@@ -792,10 +812,7 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
         }
         else
         {
-            ctx.reserve.a = ctx.data1.a;
-            ctx.reserve.b = ctx.data1.b;
-            ctx.reserve.c = ctx.data1.c;
-            push_stack( ctx );
+            push_stack( ctx.data1, spec );
         }
     }
     if( mainc == RGB24 )
@@ -808,7 +825,7 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
     }
 
 }
-
+/*
 template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void pack(register Context& ctx, register Context& ctx2)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
@@ -837,9 +854,9 @@ template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TA
 
 
 }
+*/
 
-
-template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void pack(register Context& ctx)
+template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void pack(register Context& ctx, ConvertSpecific& spec)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
         return;
@@ -852,14 +869,14 @@ template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TA
     if( mainc == RGB32 )
     {
         ctx.data1.b = _mm_or_si128(  _mm_slli_si128( ctx.data1.b, 1 ), ctx.data1.a); // G R
-        ctx.data1.c = _mm_slli_si128( ctx.data1.c, 1 ); // X B
+        //ctx.data1.c = _mm_slli_si128( ctx.data1.c, 1 ); // X B
 
         ctx.data1.a = _mm_unpacklo_epi16( ctx.data1.b, ctx.data1.c );
         ctx.data1.b = _mm_unpackhi_epi16( ctx.data1.b, ctx.data1.c );
     }
     if( mainc == BGR32 )
     {
-        ctx.reserve.a = _mm_slli_si128( ctx.data1.b, 1 );
+        //ctx.reserve.a = _mm_slli_si128( ctx.data1.b, 1 );
         ctx.data1.b = _mm_or_si128( ctx.reserve.a,  ctx.data1.c); // G B
         ctx.data1.c =  ctx.data1.a; // X R
 
@@ -876,7 +893,13 @@ template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TA
         pack_YUYV( ctx );
         //ctx.reserve.b = pack_YUYV( ctx.reserve );
     }
+    if( mainc == YUV444 )
+    {
+        ctx.reserve.a = _mm_packus_epi16( ctx.data1.a, _mm_setzero_si128() );
+        ctx.reserve.b = _mm_packus_epi16( ctx.data1.b, _mm_setzero_si128() );
+        ctx.reserve.c = _mm_packus_epi16( ctx.data1.c, _mm_setzero_si128() );
 
+    }
     if( mainc == A2R10G10B10 )
     {
         VectorPixel pix;
@@ -906,12 +929,12 @@ template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TA
     }
     if( mainc == NV12 && pix_y == 1 )
     {
-        pack_NV12( ctx );
+        pack_NV12( ctx, spec );
     }
 
     if( mainc == NV21 && pix_y == 1 )
     {
-        pack_NV21( ctx );
+        pack_NV21( ctx, spec );
     }
 }
 
@@ -932,7 +955,7 @@ static TARGET_INLINE __m128i  clip( __m128i data , const int32_t min_val, const 
 }
 
 
-template <Colorspace mainc> TARGET_INLINE void offset_yuv (VectorPixel& data, bool is_left, register Context& ctx)
+template <Colorspace mainc> TARGET_INLINE void offset_yuv (VectorPixel& data, bool is_left, ConvertSpecific& spec)
 {
     if(IS_YUV( mainc ))
     {
@@ -940,24 +963,25 @@ template <Colorspace mainc> TARGET_INLINE void offset_yuv (VectorPixel& data, bo
         //offset left
         if(is_left)
         {
-            __m128i offset_y = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_y_from );
-            __m128i offset_u = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_u_from );
-            __m128i offset_v = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_v_from );
-
-            data.a = _mm_sub_epi16( data.a, offset_y );
-            data.b = _mm_sub_epi16( data.b, offset_u );
-            data.c = _mm_sub_epi16( data.c, offset_v );
+            /*
+            __m128i offset_y = _mm_loadu_si128( (__m128i*) spec.voffset_y_from );
+            __m128i offset_u = _mm_loadu_si128( (__m128i*) spec.voffset_u_from );
+            __m128i offset_v = _mm_loadu_si128( (__m128i*) spec.voffset_v_from );
+            */
+            data.a = _mm_sub_epi16( data.a, spec.voffset_y_from);
+            data.b = _mm_sub_epi16( data.b, spec.voffset_u_from );
+            data.c = _mm_sub_epi16( data.c, spec.voffset_v_from );
         }
         else
         // offset right
-        {
-            __m128i offset_y = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_y_to);
-            __m128i offset_u = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_u_to);
-            __m128i offset_v = _mm_loadu_si128( (__m128i*) ctx.spec.voffset_v_to);
-
-            data.a = _mm_add_epi16( data.a, offset_y );
-            data.b = _mm_add_epi16( data.b, offset_u );
-            data.c = _mm_add_epi16( data.c, offset_v );
+        {/*
+            __m128i offset_y = _mm_loadu_si128( (__m128i*) spec.voffset_y_to);
+            __m128i offset_u = _mm_loadu_si128( (__m128i*) spec.voffset_u_to);
+            __m128i offset_v = _mm_loadu_si128( (__m128i*) spec.voffset_v_to);
+        */
+            data.a = _mm_add_epi16( data.a, spec.voffset_y_to);
+            data.b = _mm_add_epi16( data.b, spec.voffset_u_to);
+            data.c = _mm_add_epi16( data.c, spec.voffset_v_to);
         }
     }
 }
@@ -1021,61 +1045,46 @@ static TARGET_INLINE void round_shift( __m128i& a, int n)
     a = _mm_srai_epi32( a, n );
 }
 
-static TARGET_INLINE void mat_mul(VectorPixel& data, Matrix& mat)
+static TARGET_INLINE void mat_mul(register Context& ctx, ConvertSpecific& spec)
 {
-    VectorPixel pix1, pix2;
-    pix1.a = _mm_unpacklo_epi16( data.a, _mm_setzero_si128() );
-    pix1.b = _mm_unpacklo_epi16( data.b, _mm_setzero_si128() );
-    pix1.c = _mm_unpacklo_epi16( data.c, _mm_setzero_si128() );
+    ctx.reserve.a = _mm_unpackhi_epi16( ctx.data1.a, _mm_setzero_si128() );
+    ctx.reserve.b = _mm_unpackhi_epi16( ctx.data1.b, _mm_setzero_si128() );
+    ctx.reserve.c = _mm_unpackhi_epi16( ctx.data1.c, _mm_setzero_si128() );;
+    push_stack( ctx.reserve, spec );
 
-    pix2.a = _mm_unpackhi_epi16( data.a, _mm_setzero_si128() );
-    pix2.b = _mm_unpackhi_epi16( data.b, _mm_setzero_si128() );
-    pix2.c = _mm_unpackhi_epi16( data.c, _mm_setzero_si128() );
+    ctx.data1.a = _mm_unpacklo_epi16( ctx.data1.a, _mm_setzero_si128() );
+    ctx.data1.b = _mm_unpacklo_epi16( ctx.data1.b, _mm_setzero_si128() );
+    ctx.data1.c = _mm_unpacklo_epi16( ctx.data1.c, _mm_setzero_si128() );
 
-    __m128i r1, sub_r1;
-    __m128i r2, sub_r2;
-    __m128i r3, sub_r3;
+    ctx.reserve.a = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row1, spec.t_matrix.subrow1);
+    ctx.reserve.b = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row2, spec.t_matrix.subrow2);
+    ctx.reserve.c = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row3, spec.t_matrix.subrow3);
 
-    r1 = _mm_loadu_si128( (__m128i*)mat.row1 );
-    r2 = _mm_loadu_si128( (__m128i*)mat.row2 );
-    r3 = _mm_loadu_si128( (__m128i*)mat.row3 );
+    pop_stack( ctx.data1, spec );
+    push_stack( ctx.reserve, spec );
 
-    sub_r1 = _mm_loadu_si128( (__m128i*)mat.subrow1 );
-    sub_r2 = _mm_loadu_si128( (__m128i*)mat.subrow2);
-    sub_r3 = _mm_loadu_si128( (__m128i*)mat.subrow3);
+    ctx.reserve.a = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row1, spec.t_matrix.subrow1);
+    ctx.reserve.b = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row2, spec.t_matrix.subrow2);
+    ctx.reserve.c = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row3, spec.t_matrix.subrow3);
 
-    __m128i tmp1 = multiple_add( pix1.a, pix1.b, pix1.c, r1, sub_r2);
-    __m128i tmp2 = multiple_add( pix1.a, pix1.b, pix1.c, r2, sub_r2);
-    __m128i tmp3 = multiple_add( pix1.a, pix1.b, pix1.c, r3, sub_r3);
+    pop_stack( ctx.data1, spec );
 
-    pix1.a = tmp1;
-    pix1.b = tmp2;
-    pix1.c = tmp3;
+    round_shift( ctx.data1.a, 8 );
+    round_shift( ctx.data1.b, 8 );
+    round_shift( ctx.data1.c, 8 );
 
-    tmp1 = multiple_add( pix2.a, pix2.b, pix2.c, r1, sub_r2);
-    tmp2 = multiple_add( pix2.a, pix2.b, pix2.c, r2, sub_r2);
-    tmp3 = multiple_add( pix2.a, pix2.b, pix2.c, r3, sub_r3);
+    round_shift( ctx.reserve.a, 8 );
+    round_shift( ctx.reserve.b, 8 );
+    round_shift( ctx.reserve.c, 8 );
 
-    pix2.a = tmp1;
-    pix2.b = tmp2;
-    pix2.c = tmp3;
-
-    round_shift( pix1.a, 8 );
-    round_shift( pix1.b, 8 );
-    round_shift( pix1.c, 8 );
-
-    round_shift( pix2.a, 8 );
-    round_shift( pix2.b, 8 );
-    round_shift( pix2.c, 8 );
-
-    data.a = _mm_packs_epi32( pix1.a, pix2.a );
-    data.b = _mm_packs_epi32( pix1.b, pix2.b );
-    data.c = _mm_packs_epi32( pix1.c, pix2.c );
+    ctx.data1.a = _mm_packs_epi32( ctx.data1.a, ctx.reserve.a );
+    ctx.data1.b = _mm_packs_epi32( ctx.data1.b, ctx.reserve.b );
+    ctx.data1.c = _mm_packs_epi32( ctx.data1.c, ctx.reserve.c );
 
 }
 
 
-template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void transform (register Context& ctx)
+template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void transform (register Context& ctx, ConvertSpecific& spec)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
         return;
@@ -1088,13 +1097,13 @@ template <Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TAR
     //  matrix multiple
     if( (IS_RGB(mainc) && IS_YUV(otherc)) || (IS_YUV(mainc) && IS_RGB(otherc)))
     {
-        offset_yuv <mainc> (ctx.data1, SHIFT_LEFT, ctx);
+        offset_yuv <mainc> (ctx.data1, SHIFT_LEFT, spec);
         //offset_yuv <from_cs> (ctx.reserve, SHIFT_LEFT, ctx);
 
-        mat_mul( ctx.data1, ctx.spec.t_matrix );
-        //mat_mul( ctx.reserve, ctx.spec.t_matrix );
+        mat_mul( ctx, spec);
+        //mat_mul( ctx.reserve, spec.t_matrix );
 
-        offset_yuv <otherc> (ctx.data1, SHIFT_RIGHT, ctx);
+        offset_yuv <otherc> (ctx.data1, SHIFT_RIGHT, spec);
         //offset_yuv <to_cs> (ctx.reserve, SHIFT_RIGHT, ctx);
 
         clip_point <otherc> (ctx.data1.a, ctx.data1.b, ctx.data1.c);
@@ -1127,7 +1136,7 @@ template <Colorspace mainc, Colorspace otherc > TARGET_INLINE void next_row (uin
 }
 template< Colorspace from_cs, Colorspace to_cs, Standard st, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void convert_tick( uint8_t* src_a, uint8_t* src_b, uint8_t* src_c,
                                                                                                                              uint8_t* dst_a, uint8_t* dst_b, uint8_t* dst_c,
-                                                                                                                             ConvertMeta& meta, register Context& ctx,  int x)
+                                                                                                                             ConvertMeta& meta, register Context& ctx, ConvertSpecific& spec,  int x)
 {
 
     static size_t shift_a, shift_b, shift_c;
@@ -1140,12 +1149,12 @@ template< Colorspace from_cs, Colorspace to_cs, Standard st, int pix_x = 0, int 
     unpack <from_cs, to_cs, pix_x, pix_y> ( ctx );
 
 
-    transform <from_cs, to_cs, pix_x, pix_y > ( ctx );
+    transform <from_cs, to_cs, pix_x, pix_y > ( ctx, spec );
 
-    pack< to_cs, from_cs, pix_x, pix_y>( ctx );
+    pack< to_cs, from_cs, pix_x, pix_y>( ctx, spec );
 
     vget_pos < to_cs, from_cs, pix_x, pix_y>(shift_a, shift_b, shift_c, x);
-    store< to_cs, from_cs, pix_x, pix_y> (meta, ctx,
+    store< to_cs, from_cs, pix_x, pix_y> (meta, ctx, spec,
                          dst_a + shift_a,
                          dst_b + shift_b,
                          dst_c + shift_c);
@@ -1172,11 +1181,12 @@ template< Colorspace from_cs, Colorspace to_cs, Standard st > void colorspace_co
     uint8_t* dst_c = meta.dst_data[2];
 
     register Context context1;
+    ConvertSpecific spec1;
     if( (IS_RGB( from_cs ) && IS_YUV(to_cs)) || (IS_YUV(from_cs) && IS_RGB(to_cs)) )
     {
         // BOTLLE NECK!!!
-        init_offset_yuv < from_cs, to_cs >( context1 );
-        set_transform_coeffs <from_cs, to_cs, st>( context1 );
+        init_offset_yuv < from_cs, to_cs >( spec1 );
+        set_transform_coeffs <from_cs, to_cs, st>( spec1 );
     }
     int8_t step_x;
     if( IS_MULTISTEP( from_cs ) || IS_MULTISTEP( to_cs ))
@@ -1190,20 +1200,20 @@ template< Colorspace from_cs, Colorspace to_cs, Standard st > void colorspace_co
         for(x = 0; x+step_x <= meta.width; x += step_x)
         {
 
-            convert_tick < from_cs, to_cs, st, 0, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+            convert_tick < from_cs, to_cs, st, 0, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
 
             if( from_cs == V210 || to_cs == V210 )
             {
-                convert_tick < from_cs, to_cs, st, 1, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
-                convert_tick < from_cs, to_cs, st, 2, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+                convert_tick < from_cs, to_cs, st, 1, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
+                convert_tick < from_cs, to_cs, st, 2, 0> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
             }
             if( IS_YUV420( from_cs) || IS_YUV420( to_cs) )
             {
-                convert_tick < from_cs, to_cs, st, 0, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+                convert_tick < from_cs, to_cs, st, 0, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
                 if( from_cs == V210 || to_cs == V210 )
                 {
-                    convert_tick < from_cs, to_cs, st, 1, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
-                    convert_tick < from_cs, to_cs, st, 2, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, x);
+                    convert_tick < from_cs, to_cs, st, 1, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
+                    convert_tick < from_cs, to_cs, st, 2, 1> ( src_a, src_b, src_c, dst_a, dst_b, dst_c, meta, context1, spec1, x);
                 }
             }
 

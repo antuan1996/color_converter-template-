@@ -1,5 +1,5 @@
 //#define ENABLE_LOG
-//#define SSE2
+#define SSE2
 #define PACK_A2R10G10B10(a, b, c) ( pack10_in_int(a, b, c)  | (3 << 30) )
 
 #include <string>
@@ -357,6 +357,12 @@ static int syntetic_test()
 
     ConvertMeta info;
 
+    std::cout << "YUYV to RGB32-------------------------\n";
+    set_meta <YUYV, RGB32 >(info, 8, 2, test_yuv422i_bt601, test_yuv420s_bt601 + 8 * 2);
+    colorspace_convert<YUYV, RGB32, BT_601> (info);
+    print_interleaved( info, 4) ;
+
+
     std::cout << "YUYV to NV21-------------------------\n";
     set_meta <YUYV, NV21 >(info, 8, 2, test_yuv422i_bt601, test_yuv420s_bt601 + 8 * 2);
     colorspace_convert<YUYV, NV21, BT_601> (info);
@@ -639,10 +645,10 @@ static int syntetic_test()
     {
 
         int fnum, wid, virt_wid, hei;
-        fnum = 500;
+        fnum = 100;
         hei = 480;
         virt_wid = 640;
-        wid = virt_wid * 2;
+        wid = virt_wid * 4;
         uint8_t* frame = (uint8_t*) malloc( wid * hei * fnum );
         for(int fr = 0; fr < fnum; ++fr)
             for( int y = 0; y < hei; ++y )
@@ -658,7 +664,7 @@ static int syntetic_test()
         //set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
         //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
         //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
-        set_meta <YUYV, NV12 >(info, virt_wid, hei * fnum, frame);
+        set_meta <YUYV, RGB32 >(info, virt_wid, hei * fnum, frame);
 
         clock_t t1 = clock();
         //colorspace_convert< YUYV, YVYU, BT_601> ( info );
@@ -666,7 +672,7 @@ static int syntetic_test()
         //colorspace_convert<RGB32, RGB24, BT_601> (info);
         //colorspace_convert<RGB24, RGB32, BT_601> (info);
         //colorspace_convert<YUYV, YVYU, BT_601> (info);
-        colorspace_convert<YUYV, NV12, BT_601> (info);
+        colorspace_convert<YUYV, RGB32, BT_601> (info);
 
         //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
         //colorspace_convert<RGB24, NV12, BT_601> (info);

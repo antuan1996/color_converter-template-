@@ -357,6 +357,12 @@ static int syntetic_test()
 
     ConvertMeta info;
 
+    std::cout << "YUV444 to RGB32-------------------------\n";
+    set_meta <YUV444, RGB32 >(info, 8, 2, test_yuv444p_bt601, test_yuv444p_bt601 + 8 * 2,  test_yuv444p_bt601 + 8 * 2 * 2);
+    colorspace_convert<YUV444, RGB32, BT_601> (info);
+    print_interleaved( info, 4) ;
+
+
     std::cout << "YUYV to RGB32-------------------------\n";
     set_meta <YUYV, RGB32 >(info, 8, 2, test_yuv422i_bt601, test_yuv420s_bt601 + 8 * 2);
     colorspace_convert<YUYV, RGB32, BT_601> (info);

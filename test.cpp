@@ -670,7 +670,7 @@ static int syntetic_test()
         //set_meta <RGB32, RGB24>(info, wid, hei * fnum, frame);
         //set_meta <RGB24, NV12>(info, wid, hei * fnum, frame);
         //set_meta <RGB32, A2R10G10B10>(info, wid, hei * fnum, frame);
-        set_meta <YUYV, RGB32 >(info, virt_wid, hei * fnum, frame);
+        set_meta <YUV444, RGB32 >(info, virt_wid, hei * fnum, frame, frame, frame);
 
         clock_t t1 = clock();
         //colorspace_convert< YUYV, YVYU, BT_601> ( info );
@@ -678,7 +678,7 @@ static int syntetic_test()
         //colorspace_convert<RGB32, RGB24, BT_601> (info);
         //colorspace_convert<RGB24, RGB32, BT_601> (info);
         //colorspace_convert<YUYV, YVYU, BT_601> (info);
-        colorspace_convert<YUYV, RGB32, BT_601> (info);
+        colorspace_convert<YUV444, RGB32, BT_601> (info);
 
         //colorspace_convert<RGB32, A2R10G10B10, BT_601> (info);
         //colorspace_convert<RGB24, NV12, BT_601> (info);

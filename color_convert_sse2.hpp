@@ -275,6 +275,11 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
         ctx.data1.b = _mm_loadu_si128( ( __m128i* )( srca + 16 ));
         ctx.data1.c = _mm_loadu_si128( ( __m128i* )( srca + 32));
     }
+    if( mainc == V210 )
+    {
+        ctx.reserve.a = _mm_loadu_si128( ( __m128i* )( srca )  );
+        ctx.reserve.b = _mm_loadu_si128( ( __m128i* )( srca + 16)  );
+    }
 }
 
 static TARGET_INLINE void unpack_YUV422_8bit( VectorPixel& data)
@@ -367,19 +372,19 @@ static TARGET_INLINE void unpack_Y210( __m128i& vec, VectorPixel& data) {
 
 }
 
-static TARGET_INLINE VectorPixel unpack_A2R10G10B10( __m128i& vec1, __m128i& vec2, VectorPixel& data)
-{
-    data.a = _mm_set1_epi32( 0x3FF );
+void static TARGET_INLINE unpack_A2R10G10B10( Context& ctx)
+{ 
+    ctx.reserve.c = _mm_set1_epi32( 0x3FF );
 
-    data.c = _mm_packs_epi32( _mm_and_si128( data.a, vec1 ), _mm_and_si128( data.a, vec2 ));
-    vec1 = _mm_srai_epi32( vec1, 10 );
-    vec2 = _mm_srai_epi32( vec2, 10 );
+    ctx.data1.c = _mm_packs_epi32( _mm_and_si128( ctx.reserve.a, ctx.reserve.c ), _mm_and_si128( ctx.reserve.b, ctx.reserve.c ));
+    ctx.reserve.a = _mm_srai_epi32( ctx.reserve.a, 10 );
+    ctx.reserve.b = _mm_srai_epi32( ctx.reserve.b, 10 );
 
-    data.b = _mm_packs_epi32( _mm_and_si128( data.a, vec1 ), _mm_and_si128( data.a, vec2 ));
-    vec1 = _mm_srai_epi32( vec1, 10 );
-    vec2 = _mm_srai_epi32( vec2, 10 );
+    ctx.data1.b = _mm_packs_epi32( _mm_and_si128( ctx.reserve.a, ctx.reserve.c ), _mm_and_si128( ctx.reserve.b, ctx.reserve.c ));
+    ctx.reserve.a = _mm_srai_epi32( ctx.reserve.a, 10 );
+    ctx.reserve.b = _mm_srai_epi32( ctx.reserve.b, 10 );
 
-    data.a = _mm_packs_epi32( _mm_and_si128( data.a, vec1 ), _mm_and_si128( data.a, vec2 ));
+    ctx.data1.a = _mm_packs_epi32( _mm_and_si128( ctx.reserve.a, ctx.reserve.c ), _mm_and_si128( ctx.reserve.b, ctx.reserve.c ));
 }
 
 static TARGET_INLINE VectorPixel unpack_A2B10G10R10( __m128i& vec1 , VectorPixel& data)
@@ -477,7 +482,41 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TA
     }
 }
 */
-template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void unpack ( register Context& ctx)
+
+#define SHORT( data, pos ) (((uint16_t*)&data)[ pos ])
+void unpack_v210( register Context& ctx )
+{
+    __m128i buf = _mm_setzero_si128();
+    // y
+    SHORT( buf, 0) = SHORT( ctx.data1.b, 0 );
+    SHORT( buf, 1) = SHORT( ctx.data1.a, 1 );
+    SHORT( buf, 2) = SHORT( ctx.data1.c, 1 );
+    SHORT( buf, 3) = SHORT( ctx.data1.b, 2 );
+    SHORT( buf, 4) = SHORT( ctx.data1.a, 3 );
+    SHORT( buf, 5) = SHORT( ctx.data1.c, 3 );
+    ctx.reserve.a =  buf;
+
+    buf = _mm_setzero_si128();
+    // u
+    SHORT( buf, 0) = SHORT( ctx.data1.a, 0 );
+    SHORT( buf, 2) = SHORT( ctx.data1.b, 1 );
+    SHORT( buf, 4) = SHORT( ctx.data1.c, 2 );
+    ctx.reserve.b = buf;
+
+    buf = _mm_setzero_si128();
+    // v
+    SHORT( buf, 0) = SHORT( ctx.data1.c, 0 );
+    SHORT( buf, 1) = SHORT( ctx.data1.a, 2 );
+    SHORT( buf, 2) = SHORT( ctx.data1.b, 3 );
+    ctx.reserve.c =  buf;
+
+    ctx.data1.a = ctx.reserve.a;
+    ctx.data1.b = _mm_or_si128( ctx.reserve.b, _mm_slli_epi32( ctx.reserve.b, 16 ));
+    ctx.data1.c = _mm_or_si128( ctx.reserve.c, _mm_slli_epi32( ctx.reserve.c, 16 ));
+
+}
+
+template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TARGET_INLINE void unpack ( register Context& ctx, ConvertSpecific& spec)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
         return;
@@ -497,7 +536,7 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TA
     }
     if( mainc == A2R10G10B10)
     {
-        unpack_A2R10G10B10( ctx.data1.a, ctx.data1.b, ctx.data1 );
+        unpack_A2R10G10B10( ctx );
         //unpack_A2R10G10B10( ctx.reserve.a, ctx.reserve.b, ctx.reserve);
     }
     if( mainc == A2B10G10R10)
@@ -535,6 +574,35 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TA
     {
         unpack_Y210( ctx.data1.a, ctx.data1 );
         //unpack_Y210( ctx.reserve.a, ctx.reserve );
+    }
+    if( mainc == V210)
+    {
+        unpack_A2R10G10B10( ctx );
+        ctx.reserve.a = _mm_srli_si128( ctx.data1.a, 6 * 2 );
+        ctx.reserve.b = _mm_srli_si128( ctx.data1.b, 6 * 2 );
+        ctx.reserve.c = _mm_srli_si128( ctx.data1.c, 6 * 2 );
+
+        push_stack( ctx.reserve, spec );
+        unpack_v210( ctx );
+        pop_stack( ctx.reserve, spec );
+        push_stack( ctx.data1, spec );
+        //ctx.data1 = ctx.reserve;
+
+        ctx.data1.a = ctx.reserve.a;
+        ctx.data1.b = ctx.reserve.b;
+        ctx.data1.c = ctx.reserve.c;
+        unpack_v210( ctx );
+
+        pop_stack( ctx.reserve, spec );
+        ctx.data1.a = _mm_or_si128(ctx.data1.a, _mm_slli_si128( ctx.reserve.a, 12 ));
+        ctx.reserve.a = _mm_srli_si128( ctx.reserve.a, 4 );
+        ctx.data1.b = _mm_or_si128(ctx.data1.b, _mm_slli_si128( ctx.reserve.b, 12 ));
+        ctx.reserve.b = _mm_srli_si128( ctx.reserve.b, 4 );
+        ctx.data1.c = _mm_or_si128(ctx.data1.c, _mm_slli_si128( ctx.reserve.c, 12 ));
+        ctx.reserve.c = _mm_srli_si128( ctx.reserve.c, 4 );
+
+        pop_stack( ctx.reserve, spec );
+
     }
     if( mainc == NV12 )
     {
@@ -1146,7 +1214,7 @@ template< Colorspace from_cs, Colorspace to_cs, Standard st, int pix_x = 0, int 
                             src_b + shift_b,
                             src_c + shift_c);
 
-    unpack <from_cs, to_cs, pix_x, pix_y> ( ctx );
+    unpack <from_cs, to_cs, pix_x, pix_y> ( ctx, spec );
 
 
     transform <from_cs, to_cs, pix_x, pix_y > ( ctx, spec );

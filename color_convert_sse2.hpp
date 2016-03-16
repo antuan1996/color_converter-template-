@@ -58,11 +58,12 @@ TARGET_INLINE void push_stack( register VectorPixel& pix, ConvertSpecific& spec 
     spec.stack[ spec.sp * 3 + 2 ] =  pix.c;
     ++spec.sp;
 }
-TARGET_INLINE void pop_stack( register VectorPixel& pix, ConvertSpecific& spec)
+TARGET_INLINE void pop_stack( register VectorPixel& pix, int pos, ConvertSpecific& spec)
 {
-    pix.c = spec.stack[ spec.sp * 3 - 1 ];
-    pix.b = spec.stack[ spec.sp * 3 - 2 ];
-    pix.a = spec.stack[ spec.sp * 3 - 3 ];
+    assert( spec.sp - pos >= 0 );
+    pix.c = spec.stack[ ( spec.sp - pos ) * 3 - 1 ];
+    pix.b = spec.stack[ ( spec.sp - pos ) * 3 - 2 ];
+    pix.a = spec.stack[ ( spec.sp - pos ) * 3 - 3 ];
     --spec.sp;
 }
 template<Colorspace mainc, Colorspace otherc, int pix_x, int pix_y> inline void vget_pos(size_t& posa, size_t& posb, size_t& posc, int cur_pos)
@@ -218,7 +219,7 @@ template <Colorspace from, Colorspace to, Standard st> void set_transform_coeffs
 
     spec.t_matrix.subrow3 = _mm_set_epi16(0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ], 0, res_matrix[ 8 ]);
 }
-template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void load(ConvertMeta& meta, register Context& ctx, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
+template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > TARGET_INLINE void load(ConvertMeta& meta, register Context& ctx, ConvertSpecific& spec, const uint8_t *srca, const uint8_t *srcb, const uint8_t *srcc)
 {
     if( mainc != V210 && otherc != V210 && pix_x > 0 )
         return;
@@ -277,8 +278,13 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0 > T
     }
     if( mainc == V210 )
     {
-        ctx.reserve.a = _mm_loadu_si128( ( __m128i* )( srca )  );
-        ctx.reserve.b = _mm_loadu_si128( ( __m128i* )( srca + 16)  );
+        if( pix_x != 2)
+        {
+            ctx.reserve.a = _mm_loadu_si128( ( __m128i* )( srca )  );
+            ctx.reserve.b = _mm_loadu_si128( ( __m128i* )( srca + 16)  );
+        }
+        else
+            pop_stack( ctx.reserve, 0, spec );
     }
 }
 
@@ -506,8 +512,8 @@ void unpack_v210( register Context& ctx )
     buf = _mm_setzero_si128();
     // v
     SHORT( buf, 0) = SHORT( ctx.data1.c, 0 );
-    SHORT( buf, 1) = SHORT( ctx.data1.a, 2 );
-    SHORT( buf, 2) = SHORT( ctx.data1.b, 3 );
+    SHORT( buf, 2) = SHORT( ctx.data1.a, 2 );
+    SHORT( buf, 4) = SHORT( ctx.data1.b, 3 );
     ctx.reserve.c =  buf;
 
     ctx.data1.a = ctx.reserve.a;
@@ -577,32 +583,55 @@ template < Colorspace mainc, Colorspace otherc, int pix_x = 0, int pix_y = 0> TA
     }
     if( mainc == V210)
     {
-        unpack_A2R10G10B10( ctx );
-        ctx.reserve.a = _mm_srli_si128( ctx.data1.a, 6 * 2 );
-        ctx.reserve.b = _mm_srli_si128( ctx.data1.b, 6 * 2 );
-        ctx.reserve.c = _mm_srli_si128( ctx.data1.c, 6 * 2 );
+        // (6 + 2) + (4 + 4) + (2 + 6)
+        if( pix_x == 0 || pix_x == 1)
+        {
+            unpack_A2R10G10B10( ctx );
+            // 16 bit
+            // data1.a   Y4   C1   Y1   B0    Y4   C1   Y1   B0
+            // data1.b   C2   Y3   B1   Y0    C2   Y3   B1   Y0
+            // data1.c   Y5   B2   Y2   C0    Y5   B2   Y2   C0
+            ctx.reserve.a = _mm_srli_si128( ctx.data1.a, 4 * 2 );
+            ctx.reserve.b = _mm_srli_si128( ctx.data1.b, 4 * 2 );
+            ctx.reserve.c = _mm_srli_si128( ctx.data1.c, 4 * 2 );
 
-        push_stack( ctx.reserve, spec );
-        unpack_v210( ctx );
-        pop_stack( ctx.reserve, spec );
-        push_stack( ctx.data1, spec );
-        //ctx.data1 = ctx.reserve;
+            push_stack( ctx.reserve, spec );
+            unpack_v210( ctx );
+            pop_stack( ctx.reserve, 0,  spec );
+            push_stack( ctx.data1, spec );
+            //ctx.data1 = ctx.reserve;
 
-        ctx.data1.a = ctx.reserve.a;
-        ctx.data1.b = ctx.reserve.b;
-        ctx.data1.c = ctx.reserve.c;
-        unpack_v210( ctx );
+            ctx.data1.a = ctx.reserve.a;
+            ctx.data1.b = ctx.reserve.b;
+            ctx.data1.c = ctx.reserve.c;
+            unpack_v210( ctx );
 
-        pop_stack( ctx.reserve, spec );
-        ctx.data1.a = _mm_or_si128(ctx.data1.a, _mm_slli_si128( ctx.reserve.a, 12 ));
-        ctx.reserve.a = _mm_srli_si128( ctx.reserve.a, 4 );
-        ctx.data1.b = _mm_or_si128(ctx.data1.b, _mm_slli_si128( ctx.reserve.b, 12 ));
-        ctx.reserve.b = _mm_srli_si128( ctx.reserve.b, 4 );
-        ctx.data1.c = _mm_or_si128(ctx.data1.c, _mm_slli_si128( ctx.reserve.c, 12 ));
-        ctx.reserve.c = _mm_srli_si128( ctx.reserve.c, 4 );
-
-        pop_stack( ctx.reserve, spec );
-
+            pop_stack( ctx.reserve,0,  spec );
+            if( pix_x == 1 )
+            {
+                ctx.data1.a = _mm_or_si128( _mm_slli_si128(ctx.data1.a, 4), _mm_srli_si128( ctx.reserve.a, 8 ));
+                ctx.reserve.a =  _mm_slli_si128( ctx.reserve.a, 8 );
+                ctx.data1.b = _mm_or_si128( _mm_slli_si128(ctx.data1.b, 4), _mm_srli_si128( ctx.reserve.a, 8 ));
+                ctx.reserve.b =  _mm_slli_si128( ctx.reserve.b, 8 );
+                ctx.data1.c = _mm_or_si128( _mm_slli_si128(ctx.data1.c, 4), _mm_srli_si128( ctx.reserve.a, 8 ));
+                ctx.reserve.c =  _mm_slli_si128( ctx.reserve.c, 8 );
+                push_stack( ctx.data1, spec );
+                pop_stack( ctx.data1, 1, spec );
+                ctx.data1.a = _mm_or_si128( ctx.data1.a, ctx.reserve.a );
+                ctx.data1.b = _mm_or_si128( ctx.data1.b, ctx.reserve.b );
+                ctx.data1.c = _mm_or_si128( ctx.data1.c, ctx.reserve.c );
+            }
+            if( pix_x == 0)
+            {
+                ctx.data1.a = _mm_or_si128(ctx.reserve.a, _mm_slli_si128( ctx.data1.a, 12 ));
+                ctx.reserve.a = _mm_srli_si128( ctx.reserve.a, 4 );
+                ctx.data1.b = _mm_or_si128(ctx.reserve.b, _mm_slli_si128( ctx.data1.b, 12 ));
+                ctx.reserve.b = _mm_srli_si128( ctx.reserve.b, 4 );
+                ctx.data1.c = _mm_or_si128(ctx.reserve.c, _mm_slli_si128( ctx.data1.c, 12 ));
+                ctx.reserve.c = _mm_srli_si128( ctx.reserve.c, 4 );
+                push_stack( ctx.reserve, spec );
+            }
+        }
     }
     if( mainc == NV12 )
     {
@@ -796,9 +825,9 @@ static TARGET_INLINE __m128i pack_A2R10G10B10( VectorPixel rgb_data)
     vec = _mm_or_si128( vec, rgb_data.a );
     return vec;
 }
-static TARGET_INLINE __m128i pack_NV12( register Context& ctx, ConvertSpecific& spec)
+static TARGET_INLINE void pack_NV12( register Context& ctx, ConvertSpecific& spec)
 {
-    pop_stack( ctx.reserve, spec);
+    pop_stack( ctx.reserve,0,  spec);
     pack_YUV420( ctx );
 
     ctx.data1.b = _mm_packs_epi32( ctx.data1.b, ctx.reserve.b);
@@ -814,7 +843,7 @@ static TARGET_INLINE __m128i pack_NV12( register Context& ctx, ConvertSpecific& 
 static TARGET_INLINE void  pack_NV21( register Context& ctx, ConvertSpecific& spec)
 {
     // reg ...uvuvuv
-    pop_stack( ctx.reserve, spec );
+    pop_stack( ctx.reserve, 0,  spec );
     pack_YUV420( ctx );
 
     ctx.data1.b = _mm_packs_epi32( ctx.data1.b, _mm_setzero_si128());
@@ -1128,14 +1157,14 @@ static TARGET_INLINE void mat_mul(register Context& ctx, ConvertSpecific& spec)
     ctx.reserve.b = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row2, spec.t_matrix.subrow2);
     ctx.reserve.c = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row3, spec.t_matrix.subrow3);
 
-    pop_stack( ctx.data1, spec );
+    pop_stack( ctx.data1, 0,  spec );
     push_stack( ctx.reserve, spec );
 
     ctx.reserve.a = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row1, spec.t_matrix.subrow1);
     ctx.reserve.b = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row2, spec.t_matrix.subrow2);
     ctx.reserve.c = multiple_add( ctx.data1.a, ctx.data1.b, ctx.data1.c, spec.t_matrix.row3, spec.t_matrix.subrow3);
 
-    pop_stack( ctx.data1, spec );
+    pop_stack( ctx.data1, 0,  spec );
 
     round_shift( ctx.data1.a, 8 );
     round_shift( ctx.data1.b, 8 );
@@ -1209,7 +1238,7 @@ template< Colorspace from_cs, Colorspace to_cs, Standard st, int pix_x = 0, int 
 
     static size_t shift_a, shift_b, shift_c;
     vget_pos <from_cs, to_cs, pix_x, pix_y>(shift_a, shift_b, shift_c, x);
-    load < from_cs, to_cs, pix_x, pix_y> (meta, ctx,
+    load < from_cs, to_cs, pix_x, pix_y> (meta, ctx, spec,
                             src_a + shift_a,
                             src_b + shift_b,
                             src_c + shift_c);
